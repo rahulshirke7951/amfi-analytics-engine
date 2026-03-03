@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import json
 import os
+import gdown 
 from datetime import timedelta
 
 # ==========================
@@ -25,13 +26,8 @@ os.makedirs("output", exist_ok=True)
 # DOWNLOAD FUNCTION
 # ==========================
 
-def download_file(url, filename):
-    print(f"Downloading {filename}...")
-    response = requests.get(url)
-    response.raise_for_status()
-    with open(filename, "wb") as f:
-        f.write(response.content)
-
+print("Downloading historic.db using gdown...")
+gdown.download(HISTORIC_DB_URL, "historic.db", quiet=False)
 
 # ==========================
 # DOWNLOAD HISTORIC DB

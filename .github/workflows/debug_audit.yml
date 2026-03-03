@@ -1,0 +1,39 @@
+name: Debug Audit History
+
+on:
+  workflow_dispatch: # Allows manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  run-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pandas openpyxl requests gdown
+
+      - name: Run Debug Script
+        run: python scripts/debug_audit_history.py
+
+      - name: Upload Debug Result
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-debug-report
+          path: output/audit_debug_report.xlsx
+
+      - name: Commit Debug Output
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add output/audit_debug_report.xlsx
+          git diff --staged --quiet || (git commit -m "New debug audit report" && git push)

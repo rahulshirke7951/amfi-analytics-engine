@@ -24,16 +24,16 @@ os.makedirs("output", exist_ok=True)
 # DOWNLOAD HISTORIC DB
 # ==========================
 print("Downloading historic.db using gdown...")
-# fuzzy=True helps handle various URL formats if the config changes
+# fuzzy=True handles the Google Drive redirect and direct download logic
 gdown.download(HISTORIC_DB_URL, "historic.db", quiet=False, fuzzy=True)
 
-if os.path.getsize("historic.db") < 1000:
-    raise Exception("Downloaded historic.db is too small. It might be an HTML error page.")
+if not os.path.exists("historic.db") or os.path.getsize("historic.db") < 1000000:
+    raise Exception("historic.db download failed or file is corrupted.")
 
 # ==========================
 # DOWNLOAD LATEST MF.DB
 # ==========================
-print("Fetching latest release info...")
+print("Fetching latest release info from GitHub...")
 release_info = requests.get(MF_RELEASE_API).json()
 
 asset_url = None
@@ -43,7 +43,7 @@ for asset in release_info.get("assets", []):
         break
 
 if not asset_url:
-    raise Exception("mf.db not found in latest release")
+    raise Exception("mf.db not found in the latest GitHub release.")
 
 print("Downloading mf.db...")
 response = requests.get(asset_url)
@@ -64,16 +64,17 @@ conn.execute("ATTACH DATABASE 'historic.db' AS historic;")
 # UNIFIED NAV DATASET
 # ==========================
 print("Building unified NAV dataset...")
+# Combining daily and historic data
 query = """
-SELECT scheme_code, nav, nav_date
-FROM daily.nav_history
+SELECT scheme_code, nav, nav_date FROM daily.nav_history
 UNION
-SELECT scheme_code, nav_value AS nav, nav_date
-FROM historic.nav_history
+SELECT scheme_code, nav_value AS nav, nav_date FROM historic.nav_history
 """
 df = pd.read_sql_query(query, conn)
 
-df["nav_date"] = pd.to_datetime(df["nav_date"])
+# FIX: Using format='mixed' to handle "27-Feb-2026" and "2026-03-02"
+print("Parsing dates...")
+df["nav_date"] = pd.to_datetime(df["nav_date"], format='mixed', dayfirst=True)
 df = df.sort_values(["scheme_code", "nav_date"])
 
 # ==========================
@@ -83,20 +84,20 @@ print("Calculating returns...")
 latest_nav = df.groupby("scheme_code").last()[["nav"]]
 latest_nav.rename(columns={"nav": "latest_nav"}, inplace=True)
 
-returns = []
+returns_cols = []
 for days in RETURN_PERIODS:
     cutoff = df["nav_date"].max() - timedelta(days=days)
     past = df[df["nav_date"] <= cutoff].groupby("scheme_code").last()["nav"]
     latest = latest_nav["latest_nav"]
     r = ((latest - past) / past * 100).rename(f"return_{days}d")
-    returns.append(r)
+    returns_cols.append(r)
 
-# Since Anchor
+# Since Anchor Date
 anchor = pd.to_datetime(ANCHOR_DATE)
 anchor_nav = df[df["nav_date"] <= anchor].groupby("scheme_code").last()["nav"]
 since_anchor = ((latest_nav["latest_nav"] - anchor_nav) / anchor_nav * 100).rename("return_since_anchor")
 
-final = latest_nav.join(returns + [since_anchor])
+final = latest_nav.join(returns_cols + [since_anchor])
 
 # ==========================
 # MERGE METADATA
@@ -108,7 +109,7 @@ meta = pd.read_sql_query(meta_query, conn)
 final = final.merge(meta, on="scheme_code", how="left")
 final = final.reset_index()
 
-# Reorder columns
+# Reorder columns for readability
 cols = ["scheme_code", "scheme_name", "amc_name", "scheme_category", "latest_nav"]
 cols += [f"return_{d}d" for d in RETURN_PERIODS] + ["return_since_anchor"]
 final = final[cols]
@@ -116,6 +117,7 @@ final = final[cols]
 # ==========================
 # SAVE OUTPUT
 # ==========================
-print("Saving dashboard file...")
+print(f"Saving dashboard to {OUTPUT_FILE}...")
 final.to_excel(OUTPUT_FILE, index=False)
+
 print("✅ Dashboard data created successfully.")

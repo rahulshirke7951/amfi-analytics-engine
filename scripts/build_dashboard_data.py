@@ -38,10 +38,10 @@ df = pd.read_sql_query(query, conn)
 df["nav_date"] = pd.to_datetime(df["nav_date"], format='mixed', dayfirst=True)
 df = df.sort_values(["scheme_code", "nav_date"])
 
-# History Count per scheme (Data Quality Check)
+# Data Quality: Count total history points per scheme
 history_counts = df.groupby("scheme_code").size().rename("history_count")
 
-# Load Metadata (Latest info is Source of Truth)
+# Metadata lookup from Daily DB (Master Source)
 print("Fetching Master Metadata...")
 meta = pd.read_sql_query("SELECT DISTINCT scheme_code, scheme_name, amc_name, scheme_category FROM daily.nav_history", conn)
 
@@ -62,7 +62,7 @@ def split_category(cat_str):
 
 meta[['cat_level_1', 'cat_level_2', 'cat_level_3']] = meta['scheme_category'].apply(split_category)
 
-# Extract Plan/Option from Scheme Name
+# Extract Plan/Option from Name
 meta['plan_type'] = 'NA'
 meta.loc[meta['scheme_name'].str.contains('Direct', case=False, na=False), 'plan_type'] = 'Direct Plan'
 meta.loc[meta['scheme_name'].str.contains('Regular', case=False, na=False), 'plan_type'] = 'Regular Plan'
@@ -113,7 +113,6 @@ analytics['return_since_anchor'] = ((analytics['latest_nav'] - audit_pivoted['an
 analytics = analytics.merge(meta, on="scheme_code", how="left")
 analytics = analytics.merge(history_counts, on="scheme_code", how="left")
 
-# Reorder columns
 cols = [
     'scheme_code', 'scheme_name', 'amc_name', 'scheme_category',
     'cat_level_1', 'cat_level_2', 'cat_level_3', 'plan_type', 'payout_option',

@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import json
 import os
-import gdown 
+import gdown
 from datetime import timedelta
 
 # ==========================
@@ -21,20 +21,12 @@ RETURN_PERIODS = config["return_periods_days"]
 OUTPUT_FILE = "output/dashboard_data.xlsx"
 os.makedirs("output", exist_ok=True)
 
-
 # ==========================
-# DOWNLOAD FUNCTION
+# DOWNLOAD HISTORIC DB (Drive via gdown)
 # ==========================
 
 print("Downloading historic.db using gdown...")
 gdown.download(HISTORIC_DB_URL, "historic.db", quiet=False)
-
-# ==========================
-# DOWNLOAD HISTORIC DB
-# ==========================
-
-download_file(HISTORIC_DB_URL, "historic.db")
-
 
 # ==========================
 # DOWNLOAD LATEST MF.DB FROM RELEASE
@@ -53,8 +45,12 @@ for asset in release_info.get("assets", []):
 if not asset_url:
     raise Exception("mf.db not found in latest release")
 
-download_file(asset_url, "mf.db")
+print("Downloading mf.db...")
+response = requests.get(asset_url)
+response.raise_for_status()
 
+with open("mf.db", "wb") as f:
+    f.write(response.content)
 
 # ==========================
 # ATTACH BOTH DATABASES
@@ -65,7 +61,6 @@ print("Attaching databases...")
 conn = sqlite3.connect(":memory:")
 conn.execute("ATTACH DATABASE 'mf.db' AS daily;")
 conn.execute("ATTACH DATABASE 'historic.db' AS historic;")
-
 
 # ==========================
 # UNIFIED NAV DATASET
@@ -87,7 +82,6 @@ df = pd.read_sql_query(query, conn)
 
 df["nav_date"] = pd.to_datetime(df["nav_date"])
 df = df.sort_values(["scheme_code", "nav_date"])
-
 
 # ==========================
 # CALCULATE RETURNS
@@ -114,7 +108,6 @@ since_anchor = ((latest_nav["latest_nav"] - anchor_nav) / anchor_nav * 100).rena
 
 final = latest_nav.join(returns + [since_anchor])
 
-
 # ==========================
 # MERGE METADATA
 # ==========================
@@ -129,7 +122,6 @@ FROM daily.nav_history
 meta = pd.read_sql_query(meta_query, conn)
 
 final = final.merge(meta, on="scheme_code", how="left")
-
 final = final.reset_index()
 
 # Reorder columns

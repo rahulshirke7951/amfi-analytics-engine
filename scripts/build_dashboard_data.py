@@ -35,7 +35,7 @@ SELECT scheme_code, nav_value AS nav, nav_date FROM historic.nav_history
 df = pd.read_sql_query(query, conn)
 
 def strict_date_parse(date_str):
-    """Priority: ISO (YYYY-MM-DD), then Indian (DD-MM-YYYY)"""
+    """Ensures YYYY-MM-DD is prioritized to prevent Month/Day flipping."""
     for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%Y/%m/%d'):
         try:
             return pd.to_datetime(date_str, format=fmt)
@@ -51,10 +51,47 @@ today = datetime.now()
 df = df[df["nav_date"] <= (today + timedelta(days=1))]
 
 # ==========================
-# ANALYTICS & BIFURCATION
+# ANALYTICS & AUDIT TRAIL
 # ==========================
-history_counts = df.groupby("scheme_code").size().rename("history_count")
+latest_date = df["nav_date"].max()
+latest_nav_df = df.sort_values("nav_date").groupby("scheme_code").tail(1).copy()
+
+# Initialize the Audit Trail dataframe with latest data
+audit_trail = latest_nav_df[['scheme_code', 'nav_date', 'nav']].rename(
+    columns={'nav_date': 'latest_nav_date', 'nav': 'latest_nav'}
+)
+
+# Initialize the Analytics dataframe
+analytics = audit_trail.copy()
+
+# Calculate periods defined in config
+for d in config["return_periods_days"]:
+    cutoff = latest_date - timedelta(days=d)
+    past = df[df["nav_date"] <= cutoff].sort_values("nav_date").groupby("scheme_code").tail(1).copy()
+    
+    # Merge into Audit Trail (Pivoted View)
+    past_subset = past[['scheme_code', 'nav_date', 'nav']].rename(
+        columns={'nav_date': f'date_{d}d', 'nav': f'nav_{d}d'}
+    )
+    audit_trail = audit_trail.merge(past_subset, on='scheme_code', how='left')
+    
+    # Calculate Returns in Analytics sheet
+    analytics[f'return_{d}d'] = ((analytics['latest_nav'] - audit_trail[f'nav_{d}d']) / audit_trail[f'nav_{d}d'] * 100).round(2)
+
+# Anchor Date Logic
+anchor_dt = pd.to_datetime(config["anchor_date"])
+anchor_df = df[df["nav_date"] <= anchor_dt].sort_values("nav_date").groupby("scheme_code").tail(1).copy()
+anchor_subset = anchor_df[['scheme_code', 'nav_date', 'nav']].rename(
+    columns={'nav_date': 'anchor_date', 'nav': 'anchor_nav'}
+)
+audit_trail = audit_trail.merge(anchor_subset, on='scheme_code', how='left')
+analytics['return_since_anchor'] = ((analytics['latest_nav'] - audit_trail['anchor_nav']) / audit_trail['anchor_nav'] * 100).round(2)
+
+# ==========================
+# METADATA & BIFURCATION
+# ==========================
 meta = pd.read_sql_query("SELECT DISTINCT scheme_code, scheme_name, amc_name, scheme_category FROM daily.nav_history", conn)
+history_counts = df.groupby("scheme_code").size().rename("history_count")
 
 def split_category(cat_str):
     if not cat_str or '(' not in cat_str: return pd.Series([cat_str or 'NA', 'NA', 'NA'])
@@ -69,26 +106,13 @@ meta[['cat_level_1', 'cat_level_2', 'cat_level_3']] = meta['scheme_category'].ap
 meta['plan_type'] = meta['scheme_name'].apply(lambda x: 'Direct Plan' if 'Direct' in str(x) else ('Regular Plan' if 'Regular' in str(x) else 'NA'))
 meta['payout_option'] = meta['scheme_name'].apply(lambda x: 'Growth' if 'Growth' in str(x) else ('IDCW' if any(i in str(x) for i in ['IDCW', 'Dividend']) else 'NA'))
 
-# Returns Calculation
-latest_date = df["nav_date"].max()
-latest_nav_df = df.sort_values("nav_date").groupby("scheme_code").tail(1).copy()
-analytics = latest_nav_df[['scheme_code', 'nav', 'nav_date']].rename(columns={'nav': 'latest_nav', 'nav_date': 'latest_nav_date'})
-
-for d in config["return_periods_days"]:
-    cutoff = latest_date - timedelta(days=d)
-    past = df[df["nav_date"] <= cutoff].sort_values("nav_date").groupby("scheme_code").tail(1).copy()
-    past = past[['scheme_code', 'nav']].rename(columns={'nav': f'nav_{d}d'})
-    analytics = analytics.merge(past, on='scheme_code', how='left')
-    analytics[f'return_{d}d'] = (analytics['latest_nav'] - analytics[f'nav_{d}d']) / analytics[f'nav_{d}d'] * 100
-
-# Anchor Date
-anchor_dt = pd.to_datetime(config["anchor_date"])
-anchor_df = df[df["nav_date"] <= anchor_dt].sort_values("nav_date").groupby("scheme_code").tail(1).copy()
-analytics = analytics.merge(anchor_df[['scheme_code', 'nav']].rename(columns={'nav': 'nav_anchor'}), on='scheme_code', how='left')
-analytics['return_since_anchor'] = (analytics['latest_nav'] - analytics['nav_anchor']) / analytics['nav_anchor'] * 100
-
-# Final Save
+# Final Merge
 analytics = analytics.merge(meta, on="scheme_code", how="left").merge(history_counts, on="scheme_code", how="left")
+
+# Save to Excel
 os.makedirs("output", exist_ok=True)
-analytics.to_excel("output/dashboard_data.xlsx", index=False)
-print("✅ Main Dashboard ready with Strict Parsing.")
+with pd.ExcelWriter("output/dashboard_data.xlsx", engine='openpyxl') as writer:
+    analytics.to_excel(writer, sheet_name="Analytics_Dashboard", index=False)
+    audit_trail.to_excel(writer, sheet_name="Audit_Trail", index=False)
+
+print("✅ Dashboard with Audit Trail ready.")

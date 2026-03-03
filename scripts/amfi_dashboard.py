@@ -110,7 +110,7 @@ if "payout_option" in df.columns:
 st.divider()
 
 # ─────────────────────────────────────────────
-# KPI SECTION
+# KPI SECTION (Safe Version)
 # ─────────────────────────────────────────────
 k1, k2, k3 = st.columns(3)
 
@@ -118,19 +118,26 @@ with k1:
     st.metric("Total Funds", len(filtered_df))
 
 with k2:
-    if "return_30d" in filtered_df.columns and not filtered_df.empty:
-        st.metric("Avg 30D Return", f"{filtered_df['return_30d'].mean():.2f}%")
+    if (
+        "return_30d" in filtered_df.columns and
+        filtered_df["return_30d"].notna().any()
+    ):
+        avg_return = filtered_df["return_30d"].mean()
+        st.metric("Avg 30D Return", f"{avg_return:.2f}%")
     else:
         st.metric("Avg 30D Return", "N/A")
 
 with k3:
-    if "return_30d" in filtered_df.columns and not filtered_df.empty:
-        top_row = filtered_df.loc[filtered_df["return_30d"].idxmax()]
+    if (
+        "return_30d" in filtered_df.columns and
+        filtered_df["return_30d"].notna().any()
+    ):
+        top_row = filtered_df.loc[
+            filtered_df["return_30d"].idxmax()
+        ]
         st.metric("Top Performer", top_row["scheme_name"])
     else:
         st.metric("Top Performer", "N/A")
-
-st.divider()
 
 # ─────────────────────────────────────────────
 # TREEMAP

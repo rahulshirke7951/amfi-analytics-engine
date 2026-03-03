@@ -29,6 +29,10 @@ jobs:
       - name: Run Analytics Script
         run: |
           python scripts/build_dashboard_data.py
+          echo "=========================================="
+          echo "DATA SUMMARY"
+          echo "=========================================="
+          python -c "import pandas as pd; df=pd.read_excel('output/dashboard_data.xlsx'); print(f'Total Schemes: {len(df)}'); print(f'AMCs Found: {df[\'amc_name\'].nunique()}'); print(f'Direct Plans: {len(df[df[\'plan_type\'] == \'Direct Plan\'])}')"
 
       - name: Commit Dashboard Output
         run: |

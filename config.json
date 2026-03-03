@@ -1,6 +1,6 @@
 {
-  "historic_db_url": "PASTE_DRIVE_DIRECT_DOWNLOAD_LINK",
+  "historic_db_url": "https://drive.google.com/uc?export=download&id=1mAuCWlD-n-RxYYim8RZ59-6Ke7nQSZgf"
   "mf_release_api": "https://api.github.com/repos/YOUR_USERNAME/YOUR_NAV_REPO/releases/latest",
-  "anchor_date": "2026-02-20",
+  "anchor_date": "2026-03-01",
   "return_periods_days": [30, 90, 180, 365]
 }

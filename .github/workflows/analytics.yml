@@ -3,7 +3,7 @@ name: Build Dashboard Data
 on:
   workflow_dispatch:
   schedule:
-    - cron: "45 16 * * *"   # 10:15 PM IST daily (after NAV pipeline)
+    - cron: "45 16 * * *"
 
 permissions:
   contents: write
@@ -23,6 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run Analytics Script
@@ -31,9 +32,13 @@ jobs:
 
       - name: Commit Dashboard Output
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
+          if [ -f output/dashboard_data.xlsx ]; then
+            git config user.name "github-actions"
+            git config user.email "actions@github.com"
 
-          git add output/dashboard_data.xlsx
-          git diff --staged --quiet || git commit -m "Update dashboard data"
-          git push
+            git add output/dashboard_data.xlsx
+            git diff --staged --quiet || git commit -m "Update dashboard data"
+            git push
+          else
+            echo "No dashboard file found. Skipping commit."
+          fi

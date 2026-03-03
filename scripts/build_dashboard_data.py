@@ -4,120 +4,127 @@ import requests
 import json
 import os
 import gdown
+import re
 from datetime import timedelta
 
 # ==========================
-# LOAD CONFIG
+# LOAD CONFIG & DOWNLOADS
 # ==========================
 with open("config.json", "r") as f:
     config = json.load(f)
 
-HISTORIC_DB_URL = config["historic_db_url"]
-MF_RELEASE_API = config["mf_release_api"]
-ANCHOR_DATE = config["anchor_date"]
-RETURN_PERIODS = config["return_periods_days"]
+print("Downloading databases...")
+gdown.download(config["historic_db_url"], "historic.db", quiet=False, fuzzy=True)
 
-OUTPUT_FILE = "output/dashboard_data.xlsx"
-os.makedirs("output", exist_ok=True)
-
-# ==========================
-# DOWNLOAD HISTORIC DB
-# ==========================
-print("Downloading historic.db using gdown...")
-# fuzzy=True handles the Google Drive redirect and direct download logic
-gdown.download(HISTORIC_DB_URL, "historic.db", quiet=False, fuzzy=True)
-
-if not os.path.exists("historic.db") or os.path.getsize("historic.db") < 1000000:
-    raise Exception("historic.db download failed or file is corrupted.")
+release_info = requests.get(config["mf_release_api"]).json()
+asset_url = next(a["browser_download_url"] for a in release_info["assets"] if a["name"] == "mf.db")
+with open("mf.db", "wb") as f: 
+    f.write(requests.get(asset_url).content)
 
 # ==========================
-# DOWNLOAD LATEST MF.DB
+# DATA LOADING
 # ==========================
-print("Fetching latest release info from GitHub...")
-release_info = requests.get(MF_RELEASE_API).json()
-
-asset_url = None
-for asset in release_info.get("assets", []):
-    if asset["name"] == "mf.db":
-        asset_url = asset["browser_download_url"]
-        break
-
-if not asset_url:
-    raise Exception("mf.db not found in the latest GitHub release.")
-
-print("Downloading mf.db...")
-response = requests.get(asset_url)
-response.raise_for_status()
-
-with open("mf.db", "wb") as f:
-    f.write(response.content)
-
-# ==========================
-# ATTACH BOTH DATABASES
-# ==========================
-print("Attaching databases...")
 conn = sqlite3.connect(":memory:")
 conn.execute("ATTACH DATABASE 'mf.db' AS daily;")
 conn.execute("ATTACH DATABASE 'historic.db' AS historic;")
 
-# ==========================
-# UNIFIED NAV DATASET
-# ==========================
-print("Building unified NAV dataset...")
-# Combining daily and historic data
+print("Fetching NAV history...")
 query = """
 SELECT scheme_code, nav, nav_date FROM daily.nav_history
 UNION
 SELECT scheme_code, nav_value AS nav, nav_date FROM historic.nav_history
 """
 df = pd.read_sql_query(query, conn)
-
-# FIX: Using format='mixed' to handle "27-Feb-2026" and "2026-03-02"
-print("Parsing dates...")
 df["nav_date"] = pd.to_datetime(df["nav_date"], format='mixed', dayfirst=True)
 df = df.sort_values(["scheme_code", "nav_date"])
 
-# ==========================
-# CALCULATE RETURNS
-# ==========================
-print("Calculating returns...")
-latest_nav = df.groupby("scheme_code").last()[["nav"]]
-latest_nav.rename(columns={"nav": "latest_nav"}, inplace=True)
+# History Count per scheme (Data Quality Check)
+history_counts = df.groupby("scheme_code").size().rename("history_count")
 
-returns_cols = []
-for days in RETURN_PERIODS:
-    cutoff = df["nav_date"].max() - timedelta(days=days)
-    past = df[df["nav_date"] <= cutoff].groupby("scheme_code").last()["nav"]
-    latest = latest_nav["latest_nav"]
-    r = ((latest - past) / past * 100).rename(f"return_{days}d")
-    returns_cols.append(r)
-
-# Since Anchor Date
-anchor = pd.to_datetime(ANCHOR_DATE)
-anchor_nav = df[df["nav_date"] <= anchor].groupby("scheme_code").last()["nav"]
-since_anchor = ((latest_nav["latest_nav"] - anchor_nav) / anchor_nav * 100).rename("return_since_anchor")
-
-final = latest_nav.join(returns_cols + [since_anchor])
+# Load Metadata (Latest info is Source of Truth)
+print("Fetching Master Metadata...")
+meta = pd.read_sql_query("SELECT DISTINCT scheme_code, scheme_name, amc_name, scheme_category FROM daily.nav_history", conn)
 
 # ==========================
-# MERGE METADATA
+# BIFURCATION (Smart Filters)
 # ==========================
-print("Merging metadata...")
-meta_query = "SELECT DISTINCT scheme_code, scheme_name, amc_name, scheme_category FROM daily.nav_history"
-meta = pd.read_sql_query(meta_query, conn)
+def split_category(cat_str):
+    if not cat_str or '(' not in cat_str:
+        return pd.Series([cat_str or 'NA', 'NA', 'NA'])
+    main = cat_str.split('(')[0].strip()
+    sub_part = re.search(r'\((.*?)\)', cat_str)
+    if sub_part:
+        sub_content = sub_part.group(1).split(' - ')
+        sub1 = sub_content[0].strip() if len(sub_content) > 0 else 'NA'
+        sub2 = sub_content[1].strip() if len(sub_content) > 1 else 'NA'
+        return pd.Series([main, sub1, sub2])
+    return pd.Series([main, 'NA', 'NA'])
 
-final = final.merge(meta, on="scheme_code", how="left")
-final = final.reset_index()
+meta[['cat_level_1', 'cat_level_2', 'cat_level_3']] = meta['scheme_category'].apply(split_category)
 
-# Reorder columns for readability
-cols = ["scheme_code", "scheme_name", "amc_name", "scheme_category", "latest_nav"]
-cols += [f"return_{d}d" for d in RETURN_PERIODS] + ["return_since_anchor"]
-final = final[cols]
+# Extract Plan/Option from Scheme Name
+meta['plan_type'] = 'NA'
+meta.loc[meta['scheme_name'].str.contains('Direct', case=False, na=False), 'plan_type'] = 'Direct Plan'
+meta.loc[meta['scheme_name'].str.contains('Regular', case=False, na=False), 'plan_type'] = 'Regular Plan'
+
+meta['payout_option'] = 'NA'
+meta.loc[meta['scheme_name'].str.contains('Growth', case=False, na=False), 'payout_option'] = 'Growth'
+meta.loc[meta['scheme_name'].str.contains('IDCW|Dividend', case=False, na=False), 'payout_option'] = 'IDCW'
 
 # ==========================
-# SAVE OUTPUT
+# ANALYTICS & PIVOTED AUDIT
 # ==========================
-print(f"Saving dashboard to {OUTPUT_FILE}...")
-final.to_excel(OUTPUT_FILE, index=False)
+print("Calculating Analytics and Pivoted Audit Trail...")
+latest_date = df["nav_date"].max()
+latest_nav_df = df.groupby("scheme_code").tail(1).copy()
 
-print("✅ Dashboard data created successfully.")
+analytics = latest_nav_df[['scheme_code', 'nav', 'nav_date']].rename(
+    columns={'nav': 'latest_nav', 'nav_date': 'latest_nav_date'}
+)
+
+audit_pivoted = latest_nav_df[['scheme_code', 'nav_date', 'nav']].rename(
+    columns={'nav_date': 'latest_date', 'nav': 'latest_nav'}
+)
+
+def get_period_data(days, label):
+    cutoff = latest_date - timedelta(days=days)
+    past = df[df["nav_date"] <= cutoff].groupby("scheme_code").tail(1).copy()
+    return past[['scheme_code', 'nav_date', 'nav']].rename(
+        columns={'nav_date': f'{label}_date', 'nav': f'{label}_nav'}
+    )
+
+for d in config["return_periods_days"]:
+    period_df = get_period_data(d, f"{d}d")
+    audit_pivoted = audit_pivoted.merge(period_df, on='scheme_code', how='left')
+    nav_col = f"{d}d_nav"
+    analytics[f'return_{d}d'] = ((analytics['latest_nav'] - audit_pivoted[nav_col]) / audit_pivoted[nav_col] * 100)
+
+anchor_dt = pd.to_datetime(config["anchor_date"])
+anchor_df = df[df["nav_date"] <= anchor_dt].groupby("scheme_code").tail(1).copy()
+anchor_df = anchor_df[['scheme_code', 'nav_date', 'nav']].rename(
+    columns={'nav_date': 'anchor_date', 'nav': 'anchor_nav'}
+)
+audit_pivoted = audit_pivoted.merge(anchor_df, on='scheme_code', how='left')
+analytics['return_since_anchor'] = ((analytics['latest_nav'] - audit_pivoted['anchor_nav']) / audit_pivoted['anchor_nav'] * 100)
+
+# ==========================
+# FINAL MERGE & SAVE
+# ==========================
+analytics = analytics.merge(meta, on="scheme_code", how="left")
+analytics = analytics.merge(history_counts, on="scheme_code", how="left")
+
+# Reorder columns
+cols = [
+    'scheme_code', 'scheme_name', 'amc_name', 'scheme_category',
+    'cat_level_1', 'cat_level_2', 'cat_level_3', 'plan_type', 'payout_option',
+    'history_count', 'latest_nav', 'latest_nav_date'
+]
+cols += [f'return_{d}d' for d in config["return_periods_days"]] + ['return_since_anchor']
+analytics = analytics[cols]
+
+os.makedirs("output", exist_ok=True)
+with pd.ExcelWriter("output/dashboard_data.xlsx", engine='openpyxl') as writer:
+    analytics.to_excel(writer, sheet_name="Analytics_Dashboard", index=False)
+    audit_pivoted.to_excel(writer, sheet_name="Audit_Trail", index=False)
+
+print("✅ Dashboard ready.")

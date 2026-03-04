@@ -1,0 +1,10 @@
+- name: Cache Historic Database
+  id: cache-db
+  uses: actions/cache@v3
+  with:
+    path: historic.db
+    # This key ensures that if you change the URL in config.json, the cache resets
+    key: ${{ runner.os }}-historic-db-${{ hashFiles('config.json') }}
+
+- name: Run Analytics
+  run: python your_script.py

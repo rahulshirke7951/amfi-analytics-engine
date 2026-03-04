@@ -1,10 +1,12 @@
 - name: Cache Historic Database
-  id: cache-db
-  uses: actions/cache@v3
-  with:
-    path: historic.db
-    # This key ensures that if you change the URL in config.json, the cache resets
-    key: ${{ runner.os }}-historic-db-${{ hashFiles('config.json') }}
+        id: cache-db
+        uses: actions/cache@v3
+        with:
+          path: historic.db
+          # This key links the cache to your config. If you update the URL, it downloads fresh.
+          key: ${{ runner.os }}-historic-db-${{ hashFiles('config.json') }}
 
-- name: Run Analytics
-  run: python your_script.py
+      - name: Run Analytics Script
+        run: |
+          # Make sure this path matches where your script is stored in your repo
+          python scripts/build_dashboard_data.py

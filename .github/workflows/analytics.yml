@@ -23,7 +23,6 @@ jobs:
         with:
           python-version: "3.11"
 
-      # THIS STEP SAVES TIME: It looks for the database on GitHub's shelf first
       - name: Cache Historic Database
         id: cache-db
         uses: actions/cache@v3
@@ -49,13 +48,9 @@ jobs:
             
             if ! git diff --staged --quiet; then
               git commit -m "Update dashboard data [skip ci]"
-              # THIS LINE FIXES THE ERROR: It forces the new Excel to overwrite the old one
               git pull --rebase -X ours origin main
               git push origin main
             else
-              echo "No changes detected. Skipping."
+              echo "No changes. Skipping commit."
             fi
-          else
-            echo "Excel file not found. Script may have failed."
-            exit 1
           fi

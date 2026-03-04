@@ -16,17 +16,25 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetches all history so rebase works smoothly
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # THIS STEP SAVES TIME: It looks for the database on GitHub's shelf first
+      - name: Cache Historic Database
+        id: cache-db
+        uses: actions/cache@v3
+        with:
+          path: historic.db
+          key: ${{ runner.os }}-historic-db-${{ hashFiles('config.json') }}
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas openpyxl requests gdown
+          pip install pandas requests gdown xlsxwriter
 
       - name: Run Analytics Script
         run: |
@@ -39,16 +47,15 @@ jobs:
             git config user.email "actions@github.com"
             git add output/dashboard_data.xlsx
             
-            # Check if there are changes to commit
             if ! git diff --staged --quiet; then
               git commit -m "Update dashboard data [skip ci]"
-              # Pull latest changes from remote to avoid the 'rejected' error
-              git pull --rebase origin main
+              # THIS LINE FIXES THE ERROR: It forces the new Excel to overwrite the old one
+              git pull --rebase -X ours origin main
               git push origin main
             else
-              echo "No changes detected in Excel file. Skipping."
+              echo "No changes detected. Skipping."
             fi
           else
-            echo "No dashboard file found. Skipping commit."
-            exit 1 # Fail the job if the file was never created
+            echo "Excel file not found. Script may have failed."
+            exit 1
           fi

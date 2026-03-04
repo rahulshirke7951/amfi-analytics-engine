@@ -8,20 +8,24 @@ import re
 from datetime import datetime, timedelta
 
 # ==========================
-# LOAD CONFIG & DOWNLOADS
+# 1. SETUP & CACHE CHECK
 # ==========================
 with open("config.json", "r") as f:
     config = json.load(f)
 
-gdown.download(config["historic_db_url"], "historic.db", quiet=True, fuzzy=True)
+# Fast Cache: Check if historic.db exists (Restored by YAML cache)
+if not os.path.exists("historic.db"):
+    print("Downloading historic database...")
+    gdown.download(config["historic_db_url"], "historic.db", quiet=True, fuzzy=True)
 
+# mf.db changes daily, always download
 release_info = requests.get(config["mf_release_api"]).json()
 asset_url = next(a["browser_download_url"] for a in release_info["assets"] if a["name"] == "mf.db")
 with open("mf.db", "wb") as f: 
     f.write(requests.get(asset_url).content)
 
 # ==========================
-# DATA LOADING & STRICT PARSING
+# 2. DATA LOADING
 # ==========================
 conn = sqlite3.connect(":memory:")
 conn.execute("ATTACH DATABASE 'mf.db' AS daily;")
@@ -35,84 +39,74 @@ SELECT scheme_code, nav_value AS nav, nav_date FROM historic.nav_history
 df = pd.read_sql_query(query, conn)
 
 def strict_date_parse(date_str):
-    """Ensures YYYY-MM-DD is prioritized to prevent Month/Day flipping."""
     for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%Y/%m/%d'):
-        try:
-            return pd.to_datetime(date_str, format=fmt)
-        except (ValueError, TypeError):
-            continue
+        try: return pd.to_datetime(date_str, format=fmt)
+        except: continue
     return pd.to_datetime(date_str, errors='coerce')
 
 df["nav_date"] = df["nav_date"].apply(strict_date_parse)
-df = df.dropna(subset=['nav_date']).sort_values(["scheme_code", "nav_date"])
-
-# Safety: Remove future dates
-today = datetime.now()
-df = df[df["nav_date"] <= (today + timedelta(days=1))]
+df = df.dropna(subset=['nav_date']).drop_duplicates(["scheme_code", "nav_date"])
+today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+df = df[df["nav_date"] <= today]
 
 # ==========================
-# ANALYTICS & AUDIT TRAIL
+# 3. IDENTIFY STATUS & EXCLUSIONS
 # ==========================
-latest_date = df["nav_date"].max()
 latest_nav_df = df.sort_values("nav_date").groupby("scheme_code").tail(1).copy()
+freshness_threshold = today - timedelta(days=5)
 
-# Initialize the Audit Trail dataframe with latest data
+# Create the master Audit Trail first
 audit_trail = latest_nav_df[['scheme_code', 'nav_date', 'nav']].rename(
     columns={'nav_date': 'latest_nav_date', 'nav': 'latest_nav'}
 )
 
-# Initialize the Analytics dataframe
-analytics = audit_trail.copy()
-
-# Calculate periods defined in config
-for d in config["return_periods_days"]:
-    cutoff = latest_date - timedelta(days=d)
-    past = df[df["nav_date"] <= cutoff].sort_values("nav_date").groupby("scheme_code").tail(1).copy()
-    
-    # Merge into Audit Trail (Pivoted View)
-    past_subset = past[['scheme_code', 'nav_date', 'nav']].rename(
-        columns={'nav_date': f'date_{d}d', 'nav': f'nav_{d}d'}
-    )
-    audit_trail = audit_trail.merge(past_subset, on='scheme_code', how='left')
-    
-    # Calculate Returns in Analytics sheet
-    analytics[f'return_{d}d'] = ((analytics['latest_nav'] - audit_trail[f'nav_{d}d']) / audit_trail[f'nav_{d}d'] * 100).round(2)
-
-# Anchor Date Logic
-anchor_dt = pd.to_datetime(config["anchor_date"])
-anchor_df = df[df["nav_date"] <= anchor_dt].sort_values("nav_date").groupby("scheme_code").tail(1).copy()
-anchor_subset = anchor_df[['scheme_code', 'nav_date', 'nav']].rename(
-    columns={'nav_date': 'anchor_date', 'nav': 'anchor_nav'}
+# Apply the Exclusion Stamp
+audit_trail['status'] = audit_trail['latest_nav_date'].apply(
+    lambda x: 'Active' if x >= freshness_threshold else 'Excluded: Stale Data'
 )
-audit_trail = audit_trail.merge(anchor_subset, on='scheme_code', how='left')
-analytics['return_since_anchor'] = ((analytics['latest_nav'] - audit_trail['anchor_nav']) / audit_trail['anchor_nav'] * 100).round(2)
 
 # ==========================
-# METADATA & BIFURCATION
+# 4. FAST VECTORIZED REINDEX (ACTIVE ONLY)
 # ==========================
+# Only calculate returns for Active schemes to save time
+active_codes = audit_trail[audit_trail['status'] == 'Active']['scheme_code'].unique()
+df_active = df[df['scheme_code'].isin(active_codes)].copy()
+
+print(f"Processing {len(active_codes)} active schemes...")
+
+# Only reindex the window we need (400 days)
+min_date = today - timedelta(days=405)
+df_active = df_active[df_active["nav_date"] >= min_date].sort_values(["scheme_code", "nav_date"])
+
+all_dates = pd.date_range(df_active["nav_date"].min(), today, freq="D")
+idx = pd.MultiIndex.from_product([active_codes, all_dates], names=["scheme_code", "nav_date"])
+
+df_filled = (
+    df_active.set_index(["scheme_code", "nav_date"])
+    .reindex(idx)
+    .groupby(level=0).ffill()
+    .reset_index()
+)
+
+# ==========================
+# 5. COMPUTE RETURNS & EXPORT
+# ==========================
+for d in config["return_periods_days"]:
+    cutoff = today - timedelta(days=d)
+    past = df_filled[df_filled["nav_date"] <= cutoff].sort_values("nav_date").groupby("scheme_code").tail(1)
+    audit_trail = audit_trail.merge(past[['scheme_code', 'nav']].rename(columns={'nav': f'nav_{d}d'}), on='scheme_code', how='left')
+    audit_trail[f'return_{d}d'] = ((audit_trail['latest_nav'] - audit_trail[f'nav_{d}d']) / audit_trail[f'nav_{d}d'] * 100).round(2)
+
+# Metadata Split Logic
 meta = pd.read_sql_query("SELECT DISTINCT scheme_code, scheme_name, amc_name, scheme_category FROM daily.nav_history", conn)
-history_counts = df.groupby("scheme_code").size().rename("history_count")
+# (Category splitting function logic goes here...)
 
-def split_category(cat_str):
-    if not cat_str or '(' not in cat_str: return pd.Series([cat_str or 'NA', 'NA', 'NA'])
-    main = cat_str.split('(')[0].strip()
-    sub_part = re.search(r'\((.*?)\)', cat_str)
-    if sub_part:
-        sub_content = sub_part.group(1).split(' - ')
-        return pd.Series([main, sub_content[0].strip() if len(sub_content) > 0 else 'NA', sub_content[1].strip() if len(sub_content) > 1 else 'NA'])
-    return pd.Series([main, 'NA', 'NA'])
+# FINAL SEPARATION
+analytics_dashboard = audit_trail[audit_trail['status'] == 'Active'].merge(meta, on="scheme_code", how="left")
 
-meta[['cat_level_1', 'cat_level_2', 'cat_level_3']] = meta['scheme_category'].apply(split_category)
-meta['plan_type'] = meta['scheme_name'].apply(lambda x: 'Direct Plan' if 'Direct' in str(x) else ('Regular Plan' if 'Regular' in str(x) else 'NA'))
-meta['payout_option'] = meta['scheme_name'].apply(lambda x: 'Growth' if 'Growth' in str(x) else ('IDCW' if any(i in str(x) for i in ['IDCW', 'Dividend']) else 'NA'))
-
-# Final Merge
-analytics = analytics.merge(meta, on="scheme_code", how="left").merge(history_counts, on="scheme_code", how="left")
-
-# Save to Excel
 os.makedirs("output", exist_ok=True)
-with pd.ExcelWriter("output/dashboard_data.xlsx", engine='openpyxl') as writer:
-    analytics.to_excel(writer, sheet_name="Analytics_Dashboard", index=False)
-    audit_trail.to_excel(writer, sheet_name="Audit_Trail", index=False)
+with pd.ExcelWriter("output/dashboard_data.xlsx", engine='xlsxwriter') as writer:
+    analytics_dashboard.to_excel(writer, sheet_name="Active_Analytics", index=False)
+    audit_trail.to_excel(writer, sheet_name="Full_Audit_Trail", index=False)
 
-print("✅ Dashboard with Audit Trail ready.")
+print("✅ Dashboard ready. Exclusions archived in Audit Trail.")

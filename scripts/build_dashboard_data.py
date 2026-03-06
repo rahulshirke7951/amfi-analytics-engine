@@ -241,6 +241,20 @@ def detect_plan_type(name: str) -> str:
 meta_raw[["cat_level_1", "cat_level_2", "cat_level_3"]] = meta_raw["scheme_category"].apply(split_category)
 meta_raw["plan_type"] = meta_raw["scheme_name"].apply(detect_plan_type)
 
+
+# Detect payout option from scheme name
+_OPTION_PATTERN = re.compile(r'\b(IDCW|Dividend|Bonus|Growth)\b', re.IGNORECASE)
+
+def detect_option_type(name: str) -> str:
+    m = _OPTION_PATTERN.search(str(name))
+    if m:
+        val = m.group(1).upper()
+        if val == "DIVIDEND": return "IDCW"
+        return val.capitalize()
+    return "Growth"  # default
+
+meta_raw["option_type"] = meta_raw["scheme_name"].apply(detect_option_type)
+
 # ==========================
 # 7. FINAL EXPORT
 # ==========================

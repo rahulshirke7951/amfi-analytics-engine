@@ -24,15 +24,6 @@ log = logging.getLogger(__name__)
 with open("config.json", "r") as f:
     config = json.load(f)
 
-# Derive reindex window dynamically from config — never silently truncate data
-max_period    = max(config["return_periods_days"])
-buffer_days   = config.get("reindex_buffer_days", 15)
-reindex_start = today - timedelta(days=max_period + buffer_days)
-
-# Freshness threshold from config — no hardcoded magic numbers
-freshness_days      = config.get("freshness_threshold_days", 5)
-freshness_threshold = today - timedelta(days=freshness_days)
-
 # ── Historic DB (cached) ──
 if not os.path.exists("historic.db"):
     log.info("Cache miss: Downloading historic database from Google Drive...")
@@ -132,6 +123,34 @@ df = (
 )
 
 log.info("After dedup: %d rows, %d schemes.", len(df), df["scheme_code"].nunique())
+
+# ==========================
+# DERIVE SAFE ANCHOR DATE
+# ==========================
+latest_nav_date = df["nav_date"].max()
+
+if pd.isna(latest_nav_date):
+    raise RuntimeError("No NAV data available.")
+
+today = (latest_nav_date - timedelta(days=1)).replace(
+    hour=0, minute=0, second=0, microsecond=0
+)
+
+log.info(
+    "Latest NAV date in data: %s | Using safe anchor date: %s",
+    latest_nav_date.date(),
+    today.date()
+)
+
+# ==========================
+# DERIVE THRESHOLDS (NOW TODAY EXISTS)
+# ==========================
+max_period  = max(config["return_periods_days"])
+buffer_days = config.get("reindex_buffer_days", 15)
+freshness_days = config.get("freshness_threshold_days", 5)
+
+reindex_start = today - timedelta(days=max_period + buffer_days)
+freshness_threshold = today - timedelta(days=freshness_days)
 
 # ==========================
 # 3. IDENTIFY STATUS (STALE VS ACTIVE)

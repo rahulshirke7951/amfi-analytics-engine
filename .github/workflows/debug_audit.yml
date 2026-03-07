@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  run-debug:
+  run-audit:
     runs-on: ubuntu-latest
 
     steps:

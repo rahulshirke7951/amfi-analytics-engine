@@ -1,13 +1,15 @@
-name: Single Scheme Production Audit
+name: Debug Single Scheme Audit
 
 on:
   workflow_dispatch:
-
-permissions:
-  contents: write
+    inputs:
+      scheme_code:
+        description: "Enter Scheme Code (e.g. 140088)"
+        required: true
+        type: string
 
 jobs:
-  run-audit:
+  debug:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,32 +19,20 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
-          pip install pandas openpyxl requests gdown xlsxwriter
+          pip install pandas requests gdown openpyxl xlsxwriter
 
-      - name: Run Script
-        run: python scripts/debug_audit_history.py
+      - name: Run Debug Script
+        env:
+          SCHEME_CODE: ${{ github.event.inputs.scheme_code }}
+        run: |
+          python debug_audit_history.py $SCHEME_CODE
 
-      - name: Upload Result
+      - name: Upload Debug Output
         uses: actions/upload-artifact@v4
         with:
-          name: single-scheme-audit
-          path: output/single_scheme_production_equivalent.xlsx
-
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Commit and Push Report
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add output/single_scheme_production_equivalent.xlsx
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "chore: update single scheme audit for $(jq -r '.audit_scheme_code' config.json)"
-            git push
-          fi
+          name: debug-${{ github.event.inputs.scheme_code }}
+          path: debug_output/

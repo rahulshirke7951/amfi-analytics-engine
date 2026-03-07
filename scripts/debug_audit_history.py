@@ -50,23 +50,30 @@ with open("mf.db", "wb") as f:
     f.write(requests.get(asset_url, timeout=60).content)
 
 # ==========================
-# 3. LOAD NAV DATA
+# 3. LOAD NAV DATA (FIXED CAST)
 # ==========================
 with sqlite3.connect(":memory:") as conn:
     conn.execute("ATTACH DATABASE 'mf.db' AS daily;")
     conn.execute("ATTACH DATABASE 'historic.db' AS historic;")
 
     query = f"""
-        SELECT scheme_code, nav, nav_date, 'daily' AS source
+        SELECT CAST(scheme_code AS TEXT) AS scheme_code,
+               nav,
+               nav_date,
+               'daily' AS source
         FROM daily.nav_history
-        WHERE scheme_code = '{scheme_code}'
+        WHERE CAST(scheme_code AS TEXT) = '{scheme_code}'
 
         UNION ALL
 
-        SELECT scheme_code, nav_value AS nav, nav_date, 'historic' AS source
+        SELECT CAST(scheme_code AS TEXT) AS scheme_code,
+               nav_value AS nav,
+               nav_date,
+               'historic' AS source
         FROM historic.nav_history
-        WHERE scheme_code = '{scheme_code}'
+        WHERE CAST(scheme_code AS TEXT) = '{scheme_code}'
     """
+
     df = pd.read_sql_query(query, conn)
 
 # ==========================
@@ -91,6 +98,7 @@ latest_nav_value = latest_row["nav"]
 latest_nav_date_value = pd.Timestamp(latest_row["nav_date"])
 
 latest_nav_date = df["nav_date"].max()
+
 today = (latest_nav_date - timedelta(days=1)).replace(
     hour=0, minute=0, second=0, microsecond=0
 )
@@ -104,22 +112,17 @@ if latest_nav_date_value < freshness_threshold:
 log.info(f"Anchor Date: {today.date()} (Latest NAV: {latest_nav_date_value.date()})")
 
 # ==========================
-# 6. REINDEX + FORWARD FILL
+# 6. REINDEX FULL HISTORY (FIXED START DATE)
 # ==========================
-max_period = max(config["return_periods_days"])
-buffer_days = config.get("reindex_buffer_days", 15)
-
-reindex_start = today - timedelta(days=max_period + buffer_days)
-df_active = df[df["nav_date"] >= reindex_start].copy()
-
-all_dates = pd.date_range(df_active["nav_date"].min(), today, freq="D")
+start_date = df["nav_date"].min()   # <-- FULL historic start
+all_dates = pd.date_range(start_date, today, freq="D")
 
 df_filled = (
-    df_active.set_index("nav_date")
-             .reindex(all_dates)
-             .ffill()
-             .reset_index()
-             .rename(columns={"index": "nav_date"})
+    df.set_index("nav_date")
+      .reindex(all_dates)
+      .ffill()
+      .reset_index()
+      .rename(columns={"index": "nav_date"})
 )
 
 # ==========================
@@ -162,7 +165,7 @@ with sqlite3.connect("mf.db") as conn:
     meta_query = f"""
         SELECT scheme_code, scheme_name, amc_name, scheme_category
         FROM nav_history
-        WHERE scheme_code = '{scheme_code}'
+        WHERE CAST(scheme_code AS TEXT) = '{scheme_code}'
         ORDER BY nav_date DESC
         LIMIT 1
     """

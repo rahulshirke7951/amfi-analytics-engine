@@ -6,7 +6,7 @@ import os
 import re
 import logging
 import gdown
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 # ==========================
 # LOGGING
@@ -50,7 +50,7 @@ with open("mf.db", "wb") as f:
     f.write(requests.get(asset_url, timeout=60).content)
 
 # ==========================
-# 3. LOAD NAV DATA (UNION)
+# 3. LOAD NAV DATA
 # ==========================
 with sqlite3.connect(":memory:") as conn:
     conn.execute("ATTACH DATABASE 'mf.db' AS daily;")
@@ -86,6 +86,10 @@ if df.empty:
 # ==========================
 # 5. ANCHOR & FRESHNESS
 # ==========================
+latest_row = df.sort_values("nav_date").iloc[-1]
+latest_nav_value = latest_row["nav"]
+latest_nav_date_value = pd.Timestamp(latest_row["nav_date"])
+
 latest_nav_date = df["nav_date"].max()
 today = (latest_nav_date - timedelta(days=1)).replace(
     hour=0, minute=0, second=0, microsecond=0
@@ -94,17 +98,7 @@ today = (latest_nav_date - timedelta(days=1)).replace(
 freshness_days = config.get("freshness_threshold_days", 5)
 freshness_threshold = today - timedelta(days=freshness_days)
 
-latest_row = df.sort_values("nav_date").tail(1)
-latest_nav_value = latest_row["nav"].values[0]
-latest_nav_date_value = latest_row["nav_date"].values[0]
-
-status = (
-    "Active"
-    if latest_nav_date_value >= freshness_threshold
-    else "Excluded: Stale Data"
-)
-
-if status != "Active":
+if latest_nav_date_value < freshness_threshold:
     raise RuntimeError("Scheme excluded due to stale NAV data.")
 
 log.info(f"Anchor Date: {today.date()} (Latest NAV: {latest_nav_date_value.date()})")
@@ -116,7 +110,6 @@ max_period = max(config["return_periods_days"])
 buffer_days = config.get("reindex_buffer_days", 15)
 
 reindex_start = today - timedelta(days=max_period + buffer_days)
-
 df_active = df[df["nav_date"] >= reindex_start].copy()
 
 all_dates = pd.date_range(df_active["nav_date"].min(), today, freq="D")
@@ -153,7 +146,7 @@ for d in config["return_periods_days"]:
 
     results.append({
         "scheme_code": scheme_code,
-        "latest_nav_date": latest_nav_date_value,
+        "latest_nav_date": latest_nav_date_value.date(),
         "latest_nav": latest_nav_value,
         "period_days": d,
         "start_nav": past_nav,
@@ -163,7 +156,7 @@ for d in config["return_periods_days"]:
 returns_df = pd.DataFrame(results)
 
 # ==========================
-# 8. FETCH METADATA (DAILY ONLY)
+# 8. FETCH METADATA (Daily Only)
 # ==========================
 with sqlite3.connect("mf.db") as conn:
     meta_query = f"""
@@ -175,7 +168,7 @@ with sqlite3.connect("mf.db") as conn:
     """
     meta = pd.read_sql_query(meta_query, conn)
 
-# Metadata parsing
+# Metadata Parsing
 _CAT_PATTERN = re.compile(r'^(.*?)\s*\(\s*(.*?)\s*\)$')
 _PLAN_PATTERN = re.compile(r'\b(Direct|Regular)\b', re.IGNORECASE)
 _OPTION_PATTERN = re.compile(r'\b(IDCW|Dividend|Bonus|Growth)\b', re.IGNORECASE)

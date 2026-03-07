@@ -3,102 +3,206 @@ import pandas as pd
 import requests
 import json
 import os
-import gdown
+import re
 import logging
+import gdown
 from datetime import datetime, timedelta
 
 # ==========================
-# LOGGING SETUP
+# LOGGING
 # ==========================
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S"
+)
 log = logging.getLogger(__name__)
 
 # ==========================
-# 1. LOAD CONFIG & ARTIFACTS
+# 1. LOAD CONFIG
 # ==========================
 with open("config.json", "r") as f:
     config = json.load(f)
 
-ref_code = str(config.get("audit_scheme_code", 140088))
-log.info(f"--- 🔄 SAFE CONSOLIDATION START: Scheme {ref_code} ---")
+scheme_code = str(config.get("audit_scheme_code", 140088))
+log.info(f"🔎 Running FULL Production Logic (Single Scheme) → {scheme_code}")
 
-# DOWNLOAD ONLY IF MISSING (Preserves your files)
+# --------------------------
+# DOWNLOAD DBs
+# --------------------------
 if not os.path.exists("historic.db"):
-    log.info("historic.db missing, downloading...")
+    log.info("Downloading historic.db...")
     gdown.download(config["historic_db_url"], "historic.db", quiet=True, fuzzy=True)
 
-if not os.path.exists("mf.db"):
-    log.info("mf.db missing, downloading daily snapshot...")
-    release_info = requests.get(config["mf_release_api"]).json()
-    asset_url = next(a["browser_download_url"] for a in release_info["assets"] if a["name"] == "mf.db")
-    with open("mf.db", "wb") as f:
-        f.write(requests.get(asset_url).content)
+log.info("Downloading daily mf.db...")
+response = requests.get(config["mf_release_api"], timeout=30)
+release_info = response.json()
+asset_url = next(
+    (a["browser_download_url"] for a in release_info["assets"] if a["name"] == "mf.db"),
+    None
+)
+if not asset_url:
+    raise RuntimeError("mf.db not found in release assets.")
+
+with open("mf.db", "wb") as f:
+    f.write(requests.get(asset_url, timeout=60).content)
 
 # ==========================
-# 2. BRUTE-FORCE CONSOLIDATION
+# 2. LOAD & MERGE DATA
 # ==========================
+def parse_dates(series):
+    return pd.to_datetime(series, errors="coerce")
+
 with sqlite3.connect(":memory:") as conn:
     conn.execute("ATTACH DATABASE 'mf.db' AS daily;")
     conn.execute("ATTACH DATABASE 'historic.db' AS historic;")
-    
-    # Standard UNION logic
-    query = """
-        SELECT CAST(scheme_code AS TEXT) as scheme_code, nav, nav_date, 'daily' AS source FROM daily.nav_history
+
+    query = f"""
+        SELECT scheme_code, nav, nav_date, scheme_name, amc_name, scheme_category, 'daily' AS source
+        FROM daily.nav_history
+        WHERE scheme_code = '{scheme_code}'
         UNION ALL
-        SELECT CAST(scheme_code AS TEXT) as scheme_code, nav_value AS nav, nav_date, 'historic' AS source FROM historic.nav_history
+        SELECT scheme_code, nav_value AS nav, nav_date, scheme_name, amc_name, scheme_category, 'historic' AS source
+        FROM historic.nav_history
+        WHERE scheme_code = '{scheme_code}'
     """
-    df_raw = pd.read_sql_query(query, conn)
+    df = pd.read_sql_query(query, conn)
 
-# 1. Standardize Dates immediately (Crucial for March 4/5 visibility)
-df_raw["nav_date"] = pd.to_datetime(df_raw["nav_date"], errors='coerce')
-df_raw = df_raw.dropna(subset=["nav_date"])
+# --------------------------
+# CLEAN & DEDUPE
+# --------------------------
+df["nav_date"] = parse_dates(df["nav_date"])
+df = df.dropna(subset=["nav_date"])
 
-# 2. Priority Sort: ensure 'daily' sits on top of 'historic' for the same date
-df_raw = df_raw.sort_values(by=["nav_date", "source"], ascending=[True, True])
-
-# 3. Consolidate: This keeps the first occurrence (daily) and drops the rest
-df_consolidated = df_raw.drop_duplicates(subset=["scheme_code", "nav_date"], keep="first")
-
-# 4. Filter for Audit Scheme
-df_scheme = df_consolidated[df_consolidated["scheme_code"] == ref_code].copy()
-df_scheme = df_scheme.set_index("nav_date").sort_index()
-
-if df_scheme.empty:
-    log.error(f"❌ Scheme {ref_code} still not found. Please verify the code in AMFI.")
-    exit(1)
+df = (
+    df.sort_values(["nav_date", "source"])
+      .drop_duplicates(["scheme_code", "nav_date"], keep="first")
+)
 
 # ==========================
-# 3. ANCHOR & AUDIT
+# 3. ANCHOR + FRESHNESS
 # ==========================
-latest_available = df_scheme.index.max()
-# Anchor is 1 day before the max available date in the dataset
-today = (latest_available - timedelta(days=1)).replace(hour=0, minute=0, second=0)
+latest_nav_date = df["nav_date"].max()
+if pd.isna(latest_nav_date):
+    raise RuntimeError("No NAV data available.")
 
-current_nav_row = df_scheme[:today].tail(1)
-current_nav = current_nav_row['nav'].values[0] if not current_nav_row.empty else 0
+today = (latest_nav_date - timedelta(days=1)).replace(
+    hour=0, minute=0, second=0, microsecond=0
+)
 
-audit_results = []
-for d in config.get("return_periods_days", [30, 365]):
+freshness_days = config.get("freshness_threshold_days", 5)
+freshness_threshold = today - timedelta(days=freshness_days)
+
+latest_nav = df.sort_values("nav_date").tail(1)
+latest_nav_value = latest_nav["nav"].values[0]
+latest_nav_date_value = latest_nav["nav_date"].values[0]
+
+status = (
+    "Active"
+    if latest_nav_date_value >= freshness_threshold
+    else "Excluded: Stale Data"
+)
+
+if status != "Active":
+    log.warning("Scheme excluded due to stale data.")
+    exit()
+
+# ==========================
+# 4. REINDEX + FORWARD FILL
+# ==========================
+max_period = max(config["return_periods_days"])
+buffer_days = config.get("reindex_buffer_days", 15)
+
+reindex_start = today - timedelta(days=max_period + buffer_days)
+
+df_active = df[df["nav_date"] >= reindex_start].copy()
+
+all_dates = pd.date_range(df_active["nav_date"].min(), today, freq="D")
+
+df_filled = (
+    df_active.set_index("nav_date")
+             .reindex(all_dates)
+             .ffill()
+             .reset_index()
+             .rename(columns={"index": "nav_date"})
+)
+
+# ==========================
+# 5. RETURN CALCULATION
+# ==========================
+results = []
+
+for d in config["return_periods_days"]:
     target_date = today - timedelta(days=d)
-    past_data = df_scheme[:target_date].tail(1)
-    past_nav = past_data['nav'].values[0] if not past_data.empty else None
-    ret = round(((current_nav - past_nav) / past_nav) * 100, 2) if past_nav else None
-    
-    audit_results.append({
-        "Period_Days": d,
-        "Target_Date": target_date.date(),
-        "Matched_Date": past_data.index[0].date() if not past_data.empty else "MISSING",
-        "Start_NAV": past_nav,
-        "End_NAV": current_nav,
-        "Return_Pct": ret
+    available_dates = df_filled["nav_date"][df_filled["nav_date"] <= target_date]
+
+    if available_dates.empty:
+        past_nav = None
+    else:
+        past_nav = df_filled.loc[
+            df_filled["nav_date"] == available_dates.iloc[-1], "nav"
+        ].values[0]
+
+    return_pct = (
+        round((latest_nav_value - past_nav) / past_nav * 100, 2)
+        if past_nav and past_nav > 0
+        else None
+    )
+
+    results.append({
+        "scheme_code": scheme_code,
+        "latest_nav_date": latest_nav_date_value,
+        "latest_nav": latest_nav_value,
+        "period_days": d,
+        "start_nav": past_nav,
+        "return_pct": return_pct
     })
 
+returns_df = pd.DataFrame(results)
+
 # ==========================
-# 4. EXPORT
+# 6. METADATA EXTRACTION
+# ==========================
+meta = df.sort_values("nav_date").tail(1)
+
+_CAT_PATTERN = re.compile(r'^(.*?)\s*\(\s*(.*?)\s*\)$')
+_PLAN_PATTERN = re.compile(r'\b(Direct|Regular)\b', re.IGNORECASE)
+_OPTION_PATTERN = re.compile(r'\b(IDCW|Dividend|Bonus|Growth)\b', re.IGNORECASE)
+
+def split_category(cat_str):
+    if not isinstance(cat_str, str):
+        return pd.Series(["NA","NA","NA"])
+    m = _CAT_PATTERN.match(cat_str.strip())
+    if not m:
+        return pd.Series([cat_str.strip(),"NA","NA"])
+    main = m.group(1).strip()
+    parts = [p.strip() for p in m.group(2).split(" - ")]
+    return pd.Series([
+        main,
+        parts[0] if len(parts)>0 else "NA",
+        parts[1] if len(parts)>1 else "NA"
+    ])
+
+meta[["cat_level_1","cat_level_2","cat_level_3"]] = \
+    meta["scheme_category"].apply(split_category)
+
+meta["plan_type"] = meta["scheme_name"].apply(
+    lambda x: (m:=_PLAN_PATTERN.search(str(x))) and m.group(1).capitalize() or "Regular"
+)
+
+meta["option_type"] = meta["scheme_name"].apply(
+    lambda x: (m:=_OPTION_PATTERN.search(str(x))) and 
+    m.group(1).upper().replace("DIVIDEND","IDCW").capitalize() or "Growth"
+)
+
+# ==========================
+# 7. EXPORT
 # ==========================
 os.makedirs("output", exist_ok=True)
-with pd.ExcelWriter("output/audit_debug_report.xlsx", engine='openpyxl') as writer:
-    df_scheme.reset_index().sort_values("nav_date", ascending=False).to_excel(writer, sheet_name="Full_NAV_History", index=False)
-    pd.DataFrame(audit_results).to_excel(writer, sheet_name="Returns_Audit", index=False)
 
-log.info(f"✅ Safe Consolidation Complete. Latest date: {latest_available.date()}")
+with pd.ExcelWriter("output/single_scheme_production_equivalent.xlsx") as writer:
+    df_filled.to_excel(writer, sheet_name="Reindexed_NAV", index=False)
+    returns_df.to_excel(writer, sheet_name="Returns", index=False)
+    meta.to_excel(writer, sheet_name="Metadata", index=False)
+
+log.info("✅ Single Scheme Production-Equivalent Run Complete.")

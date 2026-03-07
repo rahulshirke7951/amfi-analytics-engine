@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 with open("config.json", "r") as f:
     config = json.load(f)
 
-ref_code = config.get("audit_scheme_code", 149758)
+ref_code = config.get("audit_scheme_code", 140088)
 return_periods = config.get("return_periods_days", [30, 90, 365])
 log.info(f"--- 🔍 ROBUST MIRROR DEBUG: Scheme {ref_code} ---")
 

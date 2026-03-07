@@ -24,17 +24,6 @@ log = logging.getLogger(__name__)
 with open("config.json", "r") as f:
     config = json.load(f)
 
-# Derive anchor date from config (falls back to today if not set)
-anchor_date_str = config.get("anchor_date")
-if anchor_date_str:
-    today = datetime.strptime(anchor_date_str, "%Y-%m-%d").replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    log.info("Using anchor date from config: %s", today.date())
-else:
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    log.info("No anchor_date in config — using today: %s", today.date())
-
 # Derive reindex window dynamically from config — never silently truncate data
 max_period    = max(config["return_periods_days"])
 buffer_days   = config.get("reindex_buffer_days", 15)
@@ -115,7 +104,25 @@ log.info("Loaded %d raw NAV rows across %d schemes.", len(df), df["scheme_code"]
 # ── Date parsing & deduplication ──
 df["nav_date"] = parse_dates_vectorized(df["nav_date"])
 df = df.dropna(subset=["nav_date"])
-df = df[df["nav_date"] <= today]
+
+# ==========================
+# DERIVE SAFE ANCHOR DATE
+# ==========================
+latest_nav_date = df["nav_date"].max()
+
+if pd.isna(latest_nav_date):
+    raise RuntimeError("No NAV data available.")
+
+# Safe anchor: max date - 1
+today = (latest_nav_date - timedelta(days=1)).replace(
+    hour=0, minute=0, second=0, microsecond=0
+)
+
+log.info(
+    "Latest NAV date in data: %s | Using safe anchor date: %s",
+    latest_nav_date.date(),
+    today.date()
+)
 
 # Daily rows win on (scheme_code, nav_date) conflicts
 df = (

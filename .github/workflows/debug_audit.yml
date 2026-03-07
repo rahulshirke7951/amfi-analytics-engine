@@ -29,8 +29,7 @@ jobs:
         env:
           SCHEME_CODE: ${{ github.event.inputs.scheme_code }}
         run: |
-          python debug_audit_history.py $SCHEME_CODE
-
+          python scripts/debug_audit_history.py $SCHEME_CODE
       - name: Upload Debug Output
         uses: actions/upload-artifact@v4
         with:

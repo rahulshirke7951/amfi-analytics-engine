@@ -1,7 +1,7 @@
-name: Debug Audit History
+name: Single Scheme Production Audit
 
 on:
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -9,6 +9,7 @@ permissions:
 jobs:
   run-debug:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
@@ -22,23 +23,26 @@ jobs:
         run: |
           pip install pandas openpyxl requests gdown xlsxwriter
 
-      - name: Run Debug Script
+      - name: Run Script
         run: python scripts/debug_audit_history.py
 
-      - name: Upload Debug Result
+      - name: Upload Result
         uses: actions/upload-artifact@v4
         with:
-          name: audit-debug-report
-          path: output/audit_debug_report.xlsx
+          name: single-scheme-audit
+          path: output/single_scheme_production_equivalent.xlsx
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Commit and Push Report
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add output/audit_debug_report.xlsx
+          git add output/single_scheme_production_equivalent.xlsx
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "chore: update debug audit report for scheme $(jq -r '.audit_scheme_code' config.json)"
+            git commit -m "chore: update single scheme audit for $(jq -r '.audit_scheme_code' config.json)"
             git push
           fi

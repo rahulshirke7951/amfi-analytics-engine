@@ -27,9 +27,9 @@ with open("config.json", "r") as f:
 scheme_code = str(config.get("audit_scheme_code", 140088))
 log.info(f"🔎 Running FULL Production Logic (Single Scheme) → {scheme_code}")
 
-# --------------------------
-# DOWNLOAD DBs
-# --------------------------
+# ==========================
+# 2. DOWNLOAD DATABASES
+# ==========================
 if not os.path.exists("historic.db"):
     log.info("Downloading historic.db...")
     gdown.download(config["historic_db_url"], "historic.db", quiet=True, fuzzy=True)
@@ -37,10 +37,12 @@ if not os.path.exists("historic.db"):
 log.info("Downloading daily mf.db...")
 response = requests.get(config["mf_release_api"], timeout=30)
 release_info = response.json()
+
 asset_url = next(
     (a["browser_download_url"] for a in release_info["assets"] if a["name"] == "mf.db"),
     None
 )
+
 if not asset_url:
     raise RuntimeError("mf.db not found in release assets.")
 
@@ -48,30 +50,29 @@ with open("mf.db", "wb") as f:
     f.write(requests.get(asset_url, timeout=60).content)
 
 # ==========================
-# 2. LOAD & MERGE DATA
+# 3. LOAD NAV DATA (UNION)
 # ==========================
-def parse_dates(series):
-    return pd.to_datetime(series, errors="coerce")
-
 with sqlite3.connect(":memory:") as conn:
     conn.execute("ATTACH DATABASE 'mf.db' AS daily;")
     conn.execute("ATTACH DATABASE 'historic.db' AS historic;")
 
     query = f"""
-        SELECT scheme_code, nav, nav_date, scheme_name, amc_name, scheme_category, 'daily' AS source
+        SELECT scheme_code, nav, nav_date, 'daily' AS source
         FROM daily.nav_history
         WHERE scheme_code = '{scheme_code}'
+
         UNION ALL
-        SELECT scheme_code, nav_value AS nav, nav_date, scheme_name, amc_name, scheme_category, 'historic' AS source
+
+        SELECT scheme_code, nav_value AS nav, nav_date, 'historic' AS source
         FROM historic.nav_history
         WHERE scheme_code = '{scheme_code}'
     """
     df = pd.read_sql_query(query, conn)
 
-# --------------------------
-# CLEAN & DEDUPE
-# --------------------------
-df["nav_date"] = parse_dates(df["nav_date"])
+# ==========================
+# 4. CLEAN & DEDUPE
+# ==========================
+df["nav_date"] = pd.to_datetime(df["nav_date"], errors="coerce")
 df = df.dropna(subset=["nav_date"])
 
 df = (
@@ -79,13 +80,13 @@ df = (
       .drop_duplicates(["scheme_code", "nav_date"], keep="first")
 )
 
+if df.empty:
+    raise RuntimeError(f"No NAV data found for scheme {scheme_code}")
+
 # ==========================
-# 3. ANCHOR + FRESHNESS
+# 5. ANCHOR & FRESHNESS
 # ==========================
 latest_nav_date = df["nav_date"].max()
-if pd.isna(latest_nav_date):
-    raise RuntimeError("No NAV data available.")
-
 today = (latest_nav_date - timedelta(days=1)).replace(
     hour=0, minute=0, second=0, microsecond=0
 )
@@ -93,9 +94,9 @@ today = (latest_nav_date - timedelta(days=1)).replace(
 freshness_days = config.get("freshness_threshold_days", 5)
 freshness_threshold = today - timedelta(days=freshness_days)
 
-latest_nav = df.sort_values("nav_date").tail(1)
-latest_nav_value = latest_nav["nav"].values[0]
-latest_nav_date_value = latest_nav["nav_date"].values[0]
+latest_row = df.sort_values("nav_date").tail(1)
+latest_nav_value = latest_row["nav"].values[0]
+latest_nav_date_value = latest_row["nav_date"].values[0]
 
 status = (
     "Active"
@@ -104,11 +105,12 @@ status = (
 )
 
 if status != "Active":
-    log.warning("Scheme excluded due to stale data.")
-    exit()
+    raise RuntimeError("Scheme excluded due to stale NAV data.")
+
+log.info(f"Anchor Date: {today.date()} (Latest NAV: {latest_nav_date_value.date()})")
 
 # ==========================
-# 4. REINDEX + FORWARD FILL
+# 6. REINDEX + FORWARD FILL
 # ==========================
 max_period = max(config["return_periods_days"])
 buffer_days = config.get("reindex_buffer_days", 15)
@@ -128,19 +130,19 @@ df_filled = (
 )
 
 # ==========================
-# 5. RETURN CALCULATION
+# 7. COMPUTE RETURNS
 # ==========================
 results = []
 
 for d in config["return_periods_days"]:
     target_date = today - timedelta(days=d)
-    available_dates = df_filled["nav_date"][df_filled["nav_date"] <= target_date]
+    available = df_filled["nav_date"][df_filled["nav_date"] <= target_date]
 
-    if available_dates.empty:
+    if available.empty:
         past_nav = None
     else:
         past_nav = df_filled.loc[
-            df_filled["nav_date"] == available_dates.iloc[-1], "nav"
+            df_filled["nav_date"] == available.iloc[-1], "nav"
         ].values[0]
 
     return_pct = (
@@ -161,10 +163,19 @@ for d in config["return_periods_days"]:
 returns_df = pd.DataFrame(results)
 
 # ==========================
-# 6. METADATA EXTRACTION
+# 8. FETCH METADATA (DAILY ONLY)
 # ==========================
-meta = df.sort_values("nav_date").tail(1)
+with sqlite3.connect("mf.db") as conn:
+    meta_query = f"""
+        SELECT scheme_code, scheme_name, amc_name, scheme_category
+        FROM nav_history
+        WHERE scheme_code = '{scheme_code}'
+        ORDER BY nav_date DESC
+        LIMIT 1
+    """
+    meta = pd.read_sql_query(meta_query, conn)
 
+# Metadata parsing
 _CAT_PATTERN = re.compile(r'^(.*?)\s*\(\s*(.*?)\s*\)$')
 _PLAN_PATTERN = re.compile(r'\b(Direct|Regular)\b', re.IGNORECASE)
 _OPTION_PATTERN = re.compile(r'\b(IDCW|Dividend|Bonus|Growth)\b', re.IGNORECASE)
@@ -196,13 +207,15 @@ meta["option_type"] = meta["scheme_name"].apply(
 )
 
 # ==========================
-# 7. EXPORT
+# 9. EXPORT
 # ==========================
 os.makedirs("output", exist_ok=True)
 
-with pd.ExcelWriter("output/single_scheme_production_equivalent.xlsx") as writer:
+output_file = "output/single_scheme_production_equivalent.xlsx"
+
+with pd.ExcelWriter(output_file, engine="xlsxwriter") as writer:
     df_filled.to_excel(writer, sheet_name="Reindexed_NAV", index=False)
     returns_df.to_excel(writer, sheet_name="Returns", index=False)
     meta.to_excel(writer, sheet_name="Metadata", index=False)
 
-log.info("✅ Single Scheme Production-Equivalent Run Complete.")
+log.info(f"✅ Process Complete. Output saved to {output_file}")

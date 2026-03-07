@@ -24,13 +24,13 @@ jobs:
           pip install pandas openpyxl requests gdown xlsxwriter
 
       - name: Run Script
-        run: python scripts/debug_audit_history.py
+        run: python scripts/debug_scheme_140088.py
 
       - name: Upload Result
         uses: actions/upload-artifact@v4
         with:
           name: single-scheme-audit
-          path: output/single_scheme_production_equivalent.xlsx
+          path: output/debug_scheme_140088.xlsx
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
@@ -39,7 +39,7 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add output/single_scheme_production_equivalent.xlsx
+          git add output/debug_scheme_140088.xlsx
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else

@@ -1,7 +1,7 @@
 name: Debug Audit History
 
 on:
-  workflow_dispatch: # Allows manual trigger
+  workflow_dispatch: # Manual trigger
 
 permissions:
   contents: write
@@ -20,7 +20,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pandas openpyxl requests gdown
+          pip install pandas openpyxl requests gdown xlsxwriter
 
       - name: Run Debug Script
         run: python scripts/debug_audit_history.py
@@ -31,9 +31,14 @@ jobs:
           name: audit-debug-report
           path: output/audit_debug_report.xlsx
 
-      - name: Commit Debug Output
+      - name: Commit and Push Report
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add output/audit_debug_report.xlsx
-          git diff --staged --quiet || (git commit -m "New debug audit report" && git push)
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update debug audit report for scheme $(jq -r '.audit_scheme_code' config.json)"
+            git push
+          fi

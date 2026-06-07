@@ -23,13 +23,21 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install pandas requests gdown openpyxl xlsxwriter
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify Environment
+        run: |
+          python --version
+          python -c "import gdown; print('gdown version:', gdown.__version__)"
+          pip show gdown
 
       - name: Run Debug Script
         env:
           SCHEME_CODE: ${{ github.event.inputs.scheme_code }}
         run: |
           python scripts/debug_audit_history.py $SCHEME_CODE
+
       - name: Upload Debug Output
         uses: actions/upload-artifact@v4
         with:

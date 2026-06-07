@@ -35,7 +35,7 @@ else:
 if not os.path.exists("amfi01jun2026.db"):
     log.info("Downloading AMFI 01-Jun database...")
     gdown.download(
-        "https://drive.google.com/file/d/19qkES_jPw3c-5M0sZF8E4z8mtZyrKyM9/view?usp=drive_link",
+        "https://drive.google.com/uc?id=19qkES_jPw3c-5M0sZF8E4z8mtZyrKyM9",
         "amfi01jun2026.db",
         quiet=False,
         fuzzy=True
@@ -74,38 +74,37 @@ def parse_dates_vectorized(series: pd.Series) -> pd.Series:
 
 with sqlite3.connect(":memory:") as conn:
 
-conn.execute("ATTACH DATABASE 'mf.db' AS daily;")
-conn.execute("ATTACH DATABASE 'historic.db' AS historic;")
-conn.execute("ATTACH DATABASE 'amfi01jun2026.db' AS amfi;")
+    conn.execute("ATTACH DATABASE 'mf.db' AS daily;")
+    conn.execute("ATTACH DATABASE 'historic.db' AS historic;")
+    conn.execute("ATTACH DATABASE 'amfi01jun2026.db' AS amfi;")
 
-query = """
-    SELECT
-        scheme_code,
-        nav,
-        nav_date,
-        'daily' AS source
-    FROM daily.nav_history
+    query = """
+        SELECT
+            scheme_code,
+            nav,
+            nav_date,
+            'daily' AS source
+        FROM daily.nav_history
 
-    UNION ALL
+        UNION ALL
 
-    SELECT
-        scheme_code,
-        nav,
-        nav_date,
-        'amfi' AS source
-    FROM amfi.nav_history
+        SELECT
+            scheme_code,
+            nav,
+            nav_date,
+            'amfi' AS source
+        FROM amfi.nav_history
 
-    UNION ALL
+        UNION ALL
 
-    SELECT
-        scheme_code,
-        nav_value AS nav,
-        nav_date,
-        'historic' AS source
-    FROM historic.nav_history
-"""
-       
-    
+        SELECT
+            scheme_code,
+            nav_value AS nav,
+            nav_date,
+            'historic' AS source
+        FROM historic.nav_history
+    """
+        
     df = pd.read_sql_query(query, conn)
 
     # Metadata: Use the most recent entry per scheme to avoid duplicates
@@ -139,6 +138,13 @@ df = (
         keep="first"
     )
     .drop(columns=["source", "priority"])
+)
+
+log.info(
+    "Merged Dataset | Rows=%s | Min Date=%s | Max Date=%s",
+    f"{len(df):,}",
+    df["nav_date"].min(),
+    df["nav_date"].max()
 )
 
 # Derive Anchor Date after full merge

@@ -24,9 +24,9 @@ jobs:
         with:
           fetch-depth: 0 # Fetches full history for proper branch tracking
 
-      # ── 2. Python Setup (Pinned to v5.3.0 SHA) ─────────────────────────────
+      # ── 2. Python Setup (Pinned to v5.3.0 Verified SHA) ────────────────────
       - name: Setup Python
-        uses: actions/setup-python@0b93645e9fa2c7931d54e5003562b41161d4b88a # v5.3.0
+        uses: actions/setup-python@01aecccf739c297c430edd37719058bdade3596a # v5.3.0
         with:
           python-version: "3.11"
 

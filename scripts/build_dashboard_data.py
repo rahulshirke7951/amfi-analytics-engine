@@ -31,6 +31,18 @@ if not os.path.exists("historic.db"):
 else:
     log.info("Cache hit: Using cached historic.db")
 
+# AMFI 01-Jun DB
+if not os.path.exists("amfi01jun2026.db"):
+    log.info("Downloading AMFI 01-Jun database...")
+    gdown.download(
+        "https://drive.google.com/file/d/19qkES_jPw3c-5M0sZF8E4z8mtZyrKyM9/view?usp=drive_link",
+        "amfi01jun2026.db",
+        quiet=False,
+        fuzzy=True
+    )
+else:
+    log.info("Cache hit: Using amfi01jun2026.db")
+
 # Daily mf.db
 log.info("Fetching daily mf.db from GitHub API...")
 try:
@@ -61,15 +73,39 @@ def parse_dates_vectorized(series: pd.Series) -> pd.Series:
     return pd.to_datetime(series, errors='coerce')
 
 with sqlite3.connect(":memory:") as conn:
-    conn.execute("ATTACH DATABASE 'mf.db' AS daily;")
-    conn.execute("ATTACH DATABASE 'historic.db' AS historic;")
 
-    # UNION ALL both sources
-    query = """
-        SELECT scheme_code, nav, nav_date, 'daily' AS source FROM daily.nav_history
-        UNION ALL
-        SELECT scheme_code, nav_value AS nav, nav_date, 'historic' AS source FROM historic.nav_history
-    """
+conn.execute("ATTACH DATABASE 'mf.db' AS daily;")
+conn.execute("ATTACH DATABASE 'historic.db' AS historic;")
+conn.execute("ATTACH DATABASE 'amfi01jun2026.db' AS amfi;")
+
+query = """
+    SELECT
+        scheme_code,
+        nav,
+        nav_date,
+        'daily' AS source
+    FROM daily.nav_history
+
+    UNION ALL
+
+    SELECT
+        scheme_code,
+        nav,
+        nav_date,
+        'amfi' AS source
+    FROM amfi.nav_history
+
+    UNION ALL
+
+    SELECT
+        scheme_code,
+        nav_value AS nav,
+        nav_date,
+        'historic' AS source
+    FROM historic.nav_history
+"""
+       
+    
     df = pd.read_sql_query(query, conn)
 
     # Metadata: Use the most recent entry per scheme to avoid duplicates
@@ -86,10 +122,23 @@ with sqlite3.connect(":memory:") as conn:
 # Deduplication: 'daily' source wins
 df["nav_date"] = parse_dates_vectorized(df["nav_date"])
 df = df.dropna(subset=["nav_date"])
+source_priority = {
+    "daily": 1,
+    "amfi": 2,
+    "historic": 3
+}
+
+df["priority"] = df["source"].map(source_priority)
+
 df = (
-    df.sort_values(["scheme_code", "nav_date", "source"])
-      .drop_duplicates(["scheme_code", "nav_date"], keep="first")
-      .drop(columns=["source"])
+    df.sort_values(
+        ["scheme_code", "nav_date", "priority"]
+    )
+    .drop_duplicates(
+        ["scheme_code", "nav_date"],
+        keep="first"
+    )
+    .drop(columns=["source", "priority"])
 )
 
 # Derive Anchor Date after full merge

@@ -5,54 +5,65 @@ on:
   schedule:
     - cron: "45 16 * * *"   # 16:45 UTC = 10:15 PM IST
 
+# Explicitly scope minimal required permissions
 permissions:
   contents: write
+
+env:
+  # Increment this version number (e.g., v2) to instantly force-clear all pipeline caches
+  CACHE_VERSION: v1
 
 jobs:
   build-analytics:
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Checkout ────────────────────────────────────────────────────────
+      # ── 1. Checkout (Pinned to v4.2.2 SHA) ─────────────────────────────────
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Fetches full history for proper branch tracking
 
-      # ── 2. Python Setup ────────────────────────────────────────────────────
+      # ── 2. Python Setup (Pinned to v5.3.0 SHA) ─────────────────────────────
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0b93645e9fa2c7931d54e5003562b41161d4b88a # v5.3.0
         with:
           python-version: "3.11"
 
-      # ── 3. Pip Cache (saves ~30-45s per run) ──────────────────────────────
+      # ── 3. Pip Cache ───────────────────────────────────────────────────────
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          key: ${{ runner.os }}-pip-${{ env.CACHE_VERSION }}-${{ hashFiles('requirements.txt') }}
           restore-keys: |
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-pip-${{ env.CACHE_VERSION }}-
 
-      # ── 4. Historic DB Cache ───────────────────────────────────────────────
-      #    Key tied to config.json hash — auto-invalidates if URL changes
-      - name: Cache Historic Database
-        id: cache-db
-        uses: actions/cache@v4
+      # ── 4. Consolidated Reference DB Cache ─────────────────────────────────
+      # Caches both static databases together. Updates if config.json or CACHE_VERSION changes.
+      - name: Cache Reference Databases
+        id: cache-dbs
+        uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
         with:
-          path: historic.db
-          key: ${{ runner.os }}-historic-db-${{ hashFiles('config.json') }}
+          path: |
+            historic.db
+            amfi01jun2026.db
+          key: ${{ runner.os }}-db-cache-${{ env.CACHE_VERSION }}-${{ hashFiles('config.json', 'scripts/build_dashboard_data.py') }}
 
       # ── 5. Install Dependencies ────────────────────────────────────────────
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install \
-            pandas==2.2.2 \
-            requests==2.32.3 \
-            gdown==5.2.0 \
-            xlsxwriter==3.2.0 \
-            openpyxl==3.1.2
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install \
+              pandas==2.2.2 \
+              requests==2.32.3 \
+              gdown==5.2.0 \
+              xlsxwriter==3.2.0 \
+              openpyxl==3.1.2
+          fi
 
       # ── 6. Validate Script Exists ──────────────────────────────────────────
       - name: Validate script path
@@ -67,7 +78,7 @@ jobs:
       - name: Run Analytics Script
         run: python scripts/build_dashboard_data.py
 
-      # ── 8. Commit Output ───────────────────────────────────────────────────
+      # ── 8. Commit and Controlled Push ──────────────────────────────────────
       - name: Commit Dashboard Output
         run: |
           if [ ! -f output/dashboard_data.xlsx ]; then
@@ -83,5 +94,15 @@ jobs:
             echo "✅ No changes in output. Skipping commit."
           else
             git commit -m "chore: update dashboard data $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]"
-            git push --force-with-lease origin main
+            
+            # Safely fetch and rebase right before pushing to manage any concurrent human commits
+            git fetch origin main
+            git rebase origin/main || {
+              echo "⚠️ Conflict detected during rebase. Pulling remote branch to settle quietly..."
+              git stash
+              git pull --rebase origin main
+              git stash pop
+            }
+            
+            git push origin main
           fi

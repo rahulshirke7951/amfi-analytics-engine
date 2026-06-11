@@ -35,11 +35,11 @@ else:
 if not os.path.exists("amfi2026.db"):
     log.info("Downloading AMFI 01-Jun database...")
     gdown.download(
-        "https://drive.google.com/uc?id=1jOg0wjsKahf1vonssg1vDagqRLJGeo60",
+        config["amfi_db_url"],
         "amfi2026.db",
         quiet=False,
         fuzzy=True
-    )
+ )        
 else:
     log.info("Cache hit: Using amfi2026.db")
 

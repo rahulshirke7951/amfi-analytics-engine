@@ -76,7 +76,7 @@ def parse_dates_vectorized(series: pd.Series) -> pd.Series:
     return pd.to_datetime(series, errors='coerce')
 
 # ==========================
-# EXTRACT RAW DATA (Isolated per Source)
+# EXTRACT RAW DATA
 # ==========================
 log.info("Extracting Isolated Source Data for Debugging...")
 
@@ -85,19 +85,19 @@ with sqlite3.connect(":memory:") as conn:
     conn.execute("ATTACH DATABASE 'amfi2026.db' AS amfi;")
     conn.execute("ATTACH DATABASE 'historic.db' AS historic;")
 
-    # Isolated extractions matching production column rules
+    # Standardized to select everything into nav_value columns
     daily_df = pd.read_sql_query(
-        "SELECT scheme_code, nav, nav_date FROM daily.nav_history WHERE scheme_code = ?", 
+        "SELECT scheme_code, nav AS nav_value, nav_date FROM daily.nav_history WHERE scheme_code = ?", 
         conn, params=[scheme_code_input]
     )
     
     amfi_df = pd.read_sql_query(
-        "SELECT scheme_code, nav_value AS nav, nav_date FROM amfi.nav_history WHERE scheme_code = ?", 
+        "SELECT scheme_code, nav_value, nav_date FROM amfi.nav_history WHERE scheme_code = ?", 
         conn, params=[scheme_code_input]
     )
     
     historic_df = pd.read_sql_query(
-        "SELECT scheme_code, nav_value AS nav, nav_date FROM historic.nav_history WHERE scheme_code = ?", 
+        "SELECT scheme_code, nav_value, nav_date FROM historic.nav_history WHERE scheme_code = ?", 
         conn, params=[scheme_code_input]
     )
 
@@ -106,7 +106,7 @@ daily_df["source"] = "daily"
 amfi_df["source"] = "amfi"
 historic_df["source"] = "historic"
 
-# Create combined un-deduped view
+# Combined un-deduped view
 merged_raw = pd.concat([daily_df, amfi_df, historic_df], ignore_index=True, sort=False)
 
 # ==========================

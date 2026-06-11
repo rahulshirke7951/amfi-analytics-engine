@@ -39,7 +39,7 @@ if not os.path.exists("amfi2026.db"):
         "amfi2026.db",
         quiet=False,
         fuzzy=True
- )        
+    )        
 else:
     log.info("Cache hit: Using amfi2026.db")
 
@@ -78,10 +78,11 @@ with sqlite3.connect(":memory:") as conn:
     conn.execute("ATTACH DATABASE 'historic.db' AS historic;")
     conn.execute("ATTACH DATABASE 'amfi2026.db' AS amfi;")
 
+    # CHANGED: Pulling nav_value uniformly across all data sources
     query = """
         SELECT
             scheme_code,
-            nav,
+            nav_value,
             nav_date,
             'daily' AS source
         FROM daily.nav_history
@@ -90,7 +91,7 @@ with sqlite3.connect(":memory:") as conn:
 
         SELECT
             scheme_code,
-            nav_value AS nav,    
+            nav_value,
             nav_date,
             'amfi' AS source
         FROM amfi.nav_history
@@ -99,7 +100,7 @@ with sqlite3.connect(":memory:") as conn:
 
         SELECT
             scheme_code,
-            nav_value AS nav,
+            nav_value,
             nav_date,
             'historic' AS source
         FROM historic.nav_history
@@ -168,8 +169,10 @@ reindex_start = today - timedelta(days=max_period + buffer_days)
 freshness_threshold = today - timedelta(days=freshness_days)
 
 latest_nav_df = df.sort_values("nav_date").groupby("scheme_code").tail(1).copy()
-audit_trail = latest_nav_df[["scheme_code", "nav_date", "nav"]].rename(
-    columns={"nav_date": "latest_nav_date", "nav": "latest_nav"}
+
+# CHANGED: Updated from "nav" to "nav_value" to match unified schema extraction
+audit_trail = latest_nav_df[["scheme_code", "nav_date", "nav_value"]].rename(
+    columns={"nav_date": "latest_nav_date", "nav_value": "latest_nav"}
 )
 audit_trail["status"] = audit_trail["latest_nav_date"].apply(
     lambda x: "Active" if x >= freshness_threshold else "Excluded: Stale Data"
@@ -193,7 +196,8 @@ df_filled = (
 # ==========================
 # 4. COMPUTE RETURNS (PIVOT)
 # ==========================
-nav_pivot = df_filled.pivot_table(index="nav_date", columns="scheme_code", values="nav")
+# CHANGED: pivot values targets "nav_value" instead of "nav"
+nav_pivot = df_filled.pivot_table(index="nav_date", columns="scheme_code", values="nav_value")
 
 def get_nav_at_offset(pivot: pd.DataFrame, anchor: datetime, days: int) -> pd.Series:
     target = anchor - timedelta(days=days)

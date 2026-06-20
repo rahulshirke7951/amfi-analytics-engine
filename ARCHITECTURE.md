@@ -1,1 +1,88 @@
-IyDwn4+XIEFNRkkgQW5hbHl0aWNzIEVuZ2luZSDigJMgQXJjaGl0ZWN0dXJlCgojIyDwn5iMIE92ZXJ2aWV3ClRoZSBBTUZJIEFuYWx5dGljcyBFbmdpbmUgaXMgYSBkYXRhIHBpcGVsaW5lIHRoYXQgaW5nZXN0cywgY2xlYW5zLCBhbmFseXplcywgYW5kIHNlcnZlcyBtdXR1YWwgZnVuZCBkYXRhIHRvIGdlbmVyYXRlIGluc2lnaHRzLgoKIyMg8J+niSBIaWdoLUxldmVsIEFyY2hpdGVjdHVyZQoKYGBgbWVybWFpZAoKZ3JhcGggVEQKICAgIFN1YltEYXRhIFNvdXJjZXNdCiAgICBBW0FNRkkgTkFWIERhdGFdCiAgICBCW0V4dGVybmFsIEFQSXNdCiAgICBlbmQKCiAgICBTdWIgLS0+IElbRGF0YSBJbmdlc3Rpb25dCiAgICBJIC0tPiBDW0RhdGEgQ2xlYW5pbmcgJiBQcmVwcm9jZXNzaW5nXQogICAgQyAtLT4gRltGZWF0dXJlIEVuZ2luZWVyaW5nXQogICAgRiAtLT4gQVtBbmFseXRpY3MgRW5naW5lXQogICAgQSAtLT4gU1tTdG9yYWdlXQogICAgUyAtLT4gRVtBUEkgLyBEYXNoYm9hcmRzXQoKICAgIFNjW1NjaGVkdWxlciAoQ3JvbiAvIEdpdEh1YiBBY3Rpb25zKV0gLS0+IEkKICAgIGVuZAoKYGBgCgojIyDwn4KnIENvcmUgQ29tcG9uZW50cwoKIyMjIDEuIERhdGEgU291cmNlcwotIEFNRkkgTkFWIGRhdGEgKG9mZmljaWFsIGRhaWx5IGZlZWQpCi0gT3B0aW9uYWwgZXh0ZXJuYWwgZGF0YQoKIyMjIDIuIERhdGEgSW5nZXN0aW9uCi0gRmV0Y2hlcyByYXcgZGF0YSBmcm9tIHNvdXJjZXMKLSBTdXBwb3J0cyBzY2hlZHVsZWQgcnVucwoKIyMjIDMuIERhdGEgQ2xlYW5pbmcgJiBQcmVwcm9jZXNzaW5nCi0gSGFuZGxlcyBtaXNzaW5nIHZhbHVlcwotIFN0YW5kYXJkaXplcyBkYXRhIGZvcm1hdAotIE5vcm1hbGl6ZXMgc2NoZW1lIG5hbWVzCgojIyMgNC4gRmVhdHVyZSBFbmdpbmVlcmluZwotIFJldHVybnMgKG1vbnRobHksIHllYXJseSkKLSBWb2xhdGlsaXR5Ci0gRHJhd2Rvd24KLSBSaXNrIG1ldHJpY3MKCiMjIyA1LiBBbmFseXRpY3MgRW5naW5lCi0gUGVyZm9ybWFuY2UgYW5hbHlzaXMKLSBUcmVuZCBhbmFseXNpcwotIENvbXBhcmlzb24gYWNyb3NzIGZ1bmRzCgojIyMgNi4gU3RvcmFnZQotIEpTT04gZmlsZXMgKGN1cnJlbnQpCi0gRGF0YWJhc2UgKGZ1dHVyZSkKCiMjIyA3LiBFeHBvc3VyZSBMYXllcgotIFJFU1QgQVBJcworIERhc2hib2FyZHMKLQoKIyMg8J+UgyBEYXRhIEZsb3cKMS4gU2NoZWR1bGVyIHRyaWdnZXJzIHBpcGVsaW5lCjIuIERhdGEgaXMgaW5nZXN0ZWQgZnJvbSBzb3VyY2VzCjMuIERhdGEgaXMgY2xlYW5lZCBhbmQgcHJlcHJvY2Vzc2VkCjQuIEZlYXR1cmVzIGFyZSBjb21wdXRlZAo1LiBBbmFseXRpY3MgYXJlIGdlbmVyYXRlZAo2LiBEYXRhIGlzIHN0b3JlZAo3LiBSZXN1bHRzIGFyZSBzZXJ2ZWQgdmlhIEFQSQoKIyMg8J+agCBDZXkgRGVzaWduIFByaW5jaXBsZXMKLSBNb2R1bGFyIHBpcGVsaW5lCi0gUmVwcm9kdWNpYmxlIGNvbXB1dGF0aW9ucwotIFNjYWxhYmxlIGFyY2hpdGVjdHVyZQotIExvdyBjb3VwbGluZyBiZXR3ZWVuIGNvbXBvbmVudHMKCiMjIPCfmqQgRnV0dXJlIEVuaGFuY2VtZW50cwotIEFkZCBoaXN0b3JpY2FsIERCCi0gSW50cm9kdWNlIGNhY2hpbmcgKFJlZGlzKQotIEFkZCBBaXJmbG93LXN0eWxlIG9yY2hlc3RyYXRpb24KLSBBZHZhbmNlZCBxdWFudCBhbmFseXRpY3MK
+# 🏗️ AMFI Analytics Engine – Architecture
+
+## 📌 Overview
+The AMFI Analytics Engine is a data pipeline that ingests, cleans, analyzes, and serves mutual fund data to generate insights.
+
+---
+
+## 🧱 High-Level Architecture
+
+```mermaid
+graph TD
+    A[AMFI NAV Data] --> B[Data Ingestion]
+    X[External APIs] --> B
+
+    B --> C[Data Cleaning & Preprocessing]
+    C --> D[Feature Engineering]
+    D --> E[Analytics Engine]
+    E --> F[Storage]
+    F --> G[API / Dashboards]
+
+    S[Scheduler (Cron / GitHub Actions)] --> B
+```
+
+---
+
+## ⚙️ Core Components
+
+### 1. Data Sources
+- AMFI NAV data (official daily feed)
+- Optional external data sources
+
+### 2. Data Ingestion
+- Fetches raw data from sources
+- Supports scheduled runs
+
+### 3. Data Cleaning & Preprocessing
+- Handles missing values
+- Standardizes formats
+- Normalizes scheme names
+
+### 4. Feature Engineering
+- Returns (monthly, yearly)
+- Volatility
+- Drawdown
+- Risk metrics
+
+### 5. Analytics Engine
+- Performance analysis
+- Trend analysis
+- Fund comparison
+
+### 6. Storage
+- JSON files (current)
+- Database (future)
+
+### 7. Exposure Layer
+- REST APIs
+- Dashboards
+
+---
+
+## 🔄 Data Flow
+
+1. Scheduler triggers pipeline
+2. Data is ingested from sources
+3. Data is cleaned and preprocessed
+4. Features are computed
+5. Analytics are generated
+6. Data is stored
+7. Results are served via API
+
+---
+
+## 🧠 Key Design Principles
+
+- Modular pipeline
+- Reproducible computations
+- Scalable architecture
+- Low coupling between components
+
+---
+
+## 🚀 Future Enhancements
+
+- Add historical database
+- Introduce caching (Redis)
+- Add Airflow-style orchestration
+- Advanced quant analytics

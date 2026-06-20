@@ -21,9 +21,9 @@ graph TD
     F --> G[Computed Metrics]
 
     G --> H[Output Storage]
-    H --> I[Consumers / APIs / Dashboards]
+    H --> I[Consumers APIs Dashboards]
 
-    S[Scheduler (GitHub Actions / Cron)] --> B
+    S[Scheduler GitHub Actions Cron] --> B
 ```
 
 ---

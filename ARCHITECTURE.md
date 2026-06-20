@@ -1,1 +1,113 @@
-IyDwn4+XIEFNRkkgQW5hbHl0aWNzIEVuZ2luZSDigJMgQXJjaGl0ZWN0dXJlCgojIyDwn5iMIE92ZXJ2aWV3ClRoZSBBTUZJIEFuYWx5dGljcyBFbmdpbmUgaXMgYSBiYXRjaCBkYXRhIHBpcGVsaW5lIHRoYXQgaW5nZXN0cywgcHJvY2Vzc2VzLCBhbmQgYW5hbHl6ZXMgbXV0dWFsIGZ1bmQgTkFWIGRhdGEgdG8gZ2VuZXJhdGUgZmluYW5jaWFsIGluc2lnaHRzIHN1Y2ggYXMgcmV0dXJucywgdm9sYXRpbGl0eSwgYW5kIHJpc2sgbWV0cmljcy4KClRoZSBzeXN0ZW0gaXMgZGVzaWduZWQgZm9yIHNjaGVkdWxlZCBleGVjdXRpb24sIGVuc3VyaW5nIGZyZXNoIGFuYWx5dGljcyB3aXRoIG1pbmltYWwgbWFudWFsIGludGVydmVudGlvbi4KCi0tLQoKIyMg8J+niSBTdXN0ZW0gQXJjaGl0ZWN0dXJlIChFeGVjdXRpb24tT3JpZW50ZWQpCgp```bWVybWFpZAoKZ3JhcGggVEQKICAgIEFbQU1GSSBOQVYgU291cmNlXSAtLT4gQltJbmdlc3Rpb24gTGF5ZXJdCiAgICBCIC0tPiBDW1JhdyBEYXRhXQoKICAgIEMgLS0+IERbUHJvY2Vzc2luZyBMYXllcl0KICAgIEQgLS0+IEVbQ2xlYW4gRGF0YXNldF0KCiAgICBFIC0tPiBGW0FuYWx5dGljcyBMYXllcl0KICAgIEYgLS0+IEdbQ29tcHV0ZWQgTWV0cmljc10KCiAgICBHIC0tPiBIW091dHB1dCBTdG9yYWdlXQogICAgSCAtLT4gSVtDb25zdW1lcnMgLyBBUElzIC8gRGFzaGJvYXJkc10KCiAgICBTW1NjaGVkdWxlciAoR2l0SHViIEFjdGlvbnMgLyBDcm9uKV0gLS0+IEIKCmBgYAoKLS0tCgojIyDwn5KnIFBpcGVsaW5lIExheWVycwoKIyMjIDEuIPCfppIgSW5nZXN0aW9uIExheWVyCioqUHVycG9zZToqKiBGZXRjaCBsYXRlc3QgTkFWIGRhdGEgZnJvbSBBTUZJCgoqKlJlc3BvbnNpYmlsaXRpZXM6KioKLSBQdWxsIHJhdyBkYXRhIChkYWlseSBiYXNpcykKLSBIYW5kbGUgZmFpbHVyZXMgJiByZXRyaWVzCi0gRW5zdXJlIGNvbnNpc3RlbnQgaW5wdXQgZm9ybWF0CgoqKk91dHB1dDoqKiBSYXcgZGF0YXNldAoKLS0tCgojIyMgMi4g8J+nsSBSb2Nlc3NpbmcgTGF5ZXIKKipQdXJwb3NlOioqIENsZWFuIGFuZCBub3JtYWxpemUgZGF0YQoKKipSZXNwb25zaWJpbGl0aWVzOioqCi0gUmVtb3ZlIGludmFsaWQgcm93cwotIE5vcm1hbGl6ZSBzY2hlbWUgbmFtZXMKLSBQYXJzZSBkYXRlIGZvcm1hdHMKLSBFbnN1cmUgc2NoZW1hIGNvbnNpc3RlbmN5CgoqKk91dHB1dDoqKiBDbGVhbiBkYXRhc2V0CgoLS0tCgojIyMgMy4g8J+ngyBBbmFseXRpY3MgTGF5ZXIKKipQdXJwb3NlOioqIEdlbmVyYXRlIGZpbmFuY2lhbCBtZXRyaWNzCgoqKk1ldHJpY3M6KioKLSBSZXR1cm5zCi0gVm9sYXRpbGl0eQotIERyYXdkb3duCi0gUmlzayBtZXRyaWNzCgoqKk91dHB1dDoqKiBBbmFseXRpY3MgZGF0YXNldAoKLS0tCgojIyMgNC4g8J+SviBTdG9yYWdlIExheWVyCi0gSlNPTiAvIENTViAoY3VycmVudCkKLSBEYXRhYmFzZSAoZnV0dXJlKQoKLS0tCgojIyMgNS4g8J+MkCBDb25zdW1wdGlvbiBMYXllcgotIEFQSSAvIERhc2hib2FyZHMKLSBFbnRyeSBmb3IgZXh0ZXJuYWwgdG9vbHMKCi0tLQoKIyMjIDYuIOKPoSBTY2hlZHVsZXIKLSBHaXRIdWIgQWN0aW9ucyAvIENyb24KCi0tLQoKIyMg8J+UjCBEYXRhIEZsb3cKMS4gU2NoZWR1bGVyIHRyaWdnZXJzIHJ1bgoyLiBJbmdlc3Rpb24gZmV0Y2hlcyBkYXRhCjMuIFByb2Nlc3NpbmcgY2xlYW5zIGRhdGEKNC4gQW5hbHl0aWNzIGNvbXB1dGVzIG1ldHJpY3MKNi4gU3RvcmFnZSBzYXZlcyBvdXRwdXQKNy4gQ29uc3VtZXJzIHVzZSBkYXRhCgoLS0tCgojIyDwn6eAIERlc2lnbiBQcmluY2lwbGVzCi0gTW9kdWxhciBwaXBlbGluZQotIElkZW1wb3RlbnQgcnVucwotIExvb3NlIGNvdXBsaW5nCi0gRXh0ZW5zaWJsZQoKLS0tCgojIyDwn5qAIEZ1dHVyZSBFbmhhbmNlbWVudHMKLSBEQgoKLSBDYWNoaW5nCi0gQWlyZmxvdwo=
+# 🏗️ AMFI Analytics Engine – Architecture
+
+## 📌 Overview
+The AMFI Analytics Engine is a batch data pipeline that ingests, processes, and analyzes mutual fund NAV data to generate financial insights such as returns, volatility, and risk metrics.
+
+The system is designed for scheduled execution, ensuring fresh analytics with minimal manual intervention.
+
+---
+
+## 🧱 System Architecture (Execution-Oriented)
+
+```mermaid
+graph TD
+    A[AMFI NAV Source] --> B[Ingestion Layer]
+    B --> C[Raw Data]
+
+    C --> D[Processing Layer]
+    D --> E[Clean Dataset]
+
+    E --> F[Analytics Layer]
+    F --> G[Computed Metrics]
+
+    G --> H[Output Storage]
+    H --> I[Consumers / APIs / Dashboards]
+
+    S[Scheduler (GitHub Actions / Cron)] --> B
+```
+
+---
+
+## ⚙️ Pipeline Layers
+
+### 1. 🧲 Ingestion Layer
+**Purpose:** Fetch latest NAV data from AMFI
+
+**Responsibilities:**
+- Pull raw data (daily basis)
+- Handle failures & retries
+- Ensure consistent input format
+
+**Output:** Raw dataset
+
+---
+
+### 2. 🧹 Processing Layer
+**Purpose:** Clean and normalize data
+
+**Responsibilities:**
+- Remove invalid rows
+- Normalize scheme names
+- Parse date formats
+- Ensure schema consistency
+
+**Output:** Clean dataset
+
+---
+
+### 3. 🧠 Analytics Layer
+**Purpose:** Generate financial metrics
+
+**Metrics:**
+- Returns
+- Volatility
+- Drawdown
+- Risk metrics
+
+**Output:** Analytics dataset
+
+---
+
+### 4. 💾 Storage Layer
+- JSON / CSV (current)
+- Database (future)
+
+---
+
+### 5. 🌐 Consumption Layer
+- API / Dashboards
+- External tools
+
+---
+
+### 6. ⏱️ Scheduler
+- GitHub Actions / Cron
+
+---
+
+## 🔄 Data Flow
+
+1. Scheduler triggers run  
+2. Ingestion fetches data  
+3. Processing cleans data  
+4. Analytics computes metrics  
+5. Storage saves output  
+6. Consumers use data  
+
+---
+
+## 🧠 Design Principles
+
+- Modular pipeline
+- Reproducible computations
+- Scalable architecture
+- Low coupling
+
+---
+
+## 🚀 Future Enhancements
+
+- Historical database
+- Caching (Redis)
+- Workflow orchestration (Airflow)
+- Advanced quant analytics
